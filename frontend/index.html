@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>串标围标智能分析系统</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.6/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.10.3/Recharts.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0a0e17; --bg-card: #111827; --bg-card-hover: #1a2332;
+    --border: #1e2a3a; --border-hover: #2d3f54;
+    --text: #e2e8f0; --text-muted: #8896a8; --text-dim: #4a5568;
+    --accent: #3b82f6; --accent-glow: rgba(59,130,246,0.15);
+    --critical: #ef4444; --high: #f97316; --medium: #eab308; --low: #22c55e;
+    --critical-bg: rgba(239,68,68,0.1); --high-bg: rgba(249,115,22,0.1);
+    --medium-bg: rgba(234,179,8,0.1); --low-bg: rgba(34,197,94,0.1);
+    --radius: 12px; --radius-sm: 8px;
+  }
+  body {
+    font-family: 'Noto Sans SC', -apple-system, sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh; overflow-x: hidden;
+  }
+  /* Ambient background */
+  body::before {
+    content: ''; position: fixed; top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: radial-gradient(ellipse at 20% 50%, rgba(59,130,246,0.04) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 20%, rgba(139,92,246,0.03) 0%, transparent 50%),
+                radial-gradient(ellipse at 60% 80%, rgba(6,182,212,0.03) 0%, transparent 50%);
+    z-index: -1; animation: drift 30s ease-in-out infinite alternate;
+  }
+  @keyframes drift {
+    0% { transform: translate(0, 0) rotate(0deg); }
+    100% { transform: translate(-3%, 2%) rotate(2deg); }
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+
+  /* Layout */
+  .app-shell { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: 260px; background: var(--bg-card); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0;
+    z-index: 100; transition: transform 0.3s;
+  }
+  .sidebar-header {
+    padding: 24px 20px; border-bottom: 1px solid var(--border);
+  }
+  .logo-text {
+    font-size: 17px; font-weight: 700; letter-spacing: -0.3px;
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .logo-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; letter-spacing: 1px; }
+  .nav-items { flex: 1; padding: 12px 10px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 12px; padding: 11px 14px;
+    border-radius: var(--radius-sm); cursor: pointer; transition: all 0.2s;
+    color: var(--text-muted); font-size: 14px; font-weight: 400;
+    margin-bottom: 2px; position: relative; border: 1px solid transparent;
+  }
+  .nav-item:hover { background: var(--accent-glow); color: var(--text); border-color: var(--border); }
+  .nav-item.active {
+    background: var(--accent-glow); color: var(--accent);
+    border-color: rgba(59,130,246,0.25); font-weight: 500;
+  }
+  .nav-item.active::before {
+    content: ''; position: absolute; left: -10px; top: 50%; transform: translateY(-50%);
+    width: 3px; height: 20px; background: var(--accent); border-radius: 0 3px 3px 0;
+  }
+  .nav-icon { width: 18px; text-align: center; font-size: 16px; }
+
+  .main-content { margin-left: 260px; flex: 1; padding: 28px 32px; min-height: 100vh; }
+  .page-header { margin-bottom: 28px; }
+  .page-title { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+  .page-desc { color: var(--text-muted); font-size: 13px; margin-top: 6px; }
+
+  /* Cards */
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 22px; transition: all 0.25s;
+  }
+  .card:hover { border-color: var(--border-hover); }
+  .card-title {
+    font-size: 13px; font-weight: 500; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 14px;
+  }
+
+  /* Stat cards */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .stat-card {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px 22px; transition: all 0.3s; position: relative; overflow: hidden;
+  }
+  .stat-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: var(--accent); opacity: 0; transition: opacity 0.3s;
+  }
+  .stat-card:hover { border-color: var(--border-hover); transform: translateY(-2px); }
+  .stat-card:hover::before { opacity: 1; }
+  .stat-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.6px; }
+  .stat-value { font-size: 32px; font-weight: 900; margin-top: 8px; letter-spacing: -1px; }
+  .stat-tag {
+    display: inline-block; margin-top: 8px; padding: 3px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
+  }
+
+  /* Risk colors */
+  .risk-critical { color: var(--critical); }
+  .risk-high { color: var(--high); }
+  .risk-medium { color: var(--medium); }
+  .risk-low { color: var(--low); }
+  .tag-critical { background: var(--critical-bg); color: var(--critical); }
+  .tag-high { background: var(--high-bg); color: var(--high); }
+  .tag-medium { background: var(--medium-bg); color: var(--medium); }
+  .tag-low { background: var(--low-bg); color: var(--low); }
+
+  /* Grid layouts */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left; padding: 10px 14px; color: var(--text-muted);
+    font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02);
+  }
+  td {
+    padding: 12px 14px; border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+  tr:hover td { background: rgba(59,130,246,0.04); }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 9px 18px; border-radius: var(--radius-sm);
+    font-size: 13px; font-weight: 500; cursor: pointer;
+    border: 1px solid var(--border); background: var(--bg-card);
+    color: var(--text); transition: all 0.2s; font-family: inherit;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+  .btn-primary {
+    background: var(--accent); color: white; border-color: var(--accent);
+  }
+  .btn-primary:hover { background: #2563eb; border-color: #2563eb; color: white; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+  .btn-danger { border-color: var(--critical); color: var(--critical); }
+  .btn-danger:hover { background: var(--critical-bg); }
+
+  /* Form elements */
+  .form-group { margin-bottom: 16px; }
+  .form-label { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .form-input, .form-textarea {
+    width: 100%; padding: 10px 14px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    font-family: inherit; font-size: 14px; transition: border-color 0.2s;
+  }
+  .form-input:focus, .form-textarea:focus { outline: none; border-color: var(--accent); }
+  .form-textarea { min-height: 80px; resize: vertical; }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center; z-index: 1000;
+  }
+  .modal {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 28px; width: 480px; max-width: 90vw; max-height: 85vh; overflow-y: auto;
+  }
+  .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+
+  /* Upload area */
+  .upload-zone {
+    border: 2px dashed var(--border); border-radius: var(--radius);
+    padding: 40px; text-align: center; cursor: pointer; transition: all 0.3s;
+  }
+  .upload-zone:hover { border-color: var(--accent); background: var(--accent-glow); }
+  .upload-zone.dragover { border-color: var(--accent); background: var(--accent-glow); }
+  .upload-icon { font-size: 40px; margin-bottom: 12px; }
+  .upload-text { font-size: 14px; color: var(--text-muted); }
+
+  /* File list */
+  .file-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; background: var(--bg); border-radius: var(--radius-sm);
+    margin-top: 8px; border: 1px solid var(--border);
+  }
+  .file-name { font-size: 13px; display: flex; align-items: center; gap: 8px; }
+
+  /* Badge */
+  .badge {
+    display: inline-flex; align-items: center; padding: 3px 10px;
+    border-radius: 20px; font-size: 11px; font-weight: 600; letter-spacing: 0.3px;
+  }
+
+  /* Progress ring */
+  .risk-gauge { position: relative; width: 160px; height: 160px; margin: 0 auto; }
+  .risk-gauge svg { transform: rotate(-90deg); }
+  .risk-gauge-value {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    text-align: center;
+  }
+  .risk-gauge-score { font-size: 36px; font-weight: 900; letter-spacing: -1.5px; }
+  .risk-gauge-label { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+  /* Alert row */
+  .alert-item {
+    padding: 14px 18px; border-left: 3px solid var(--border);
+    background: var(--bg); border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    margin-bottom: 8px; transition: all 0.2s;
+  }
+  .alert-item:hover { background: rgba(255,255,255,0.02); }
+  .alert-item.alert-critical { border-left-color: var(--critical); }
+  .alert-item.alert-high { border-left-color: var(--high); }
+  .alert-item.alert-medium { border-left-color: var(--medium); }
+  .alert-item.alert-low { border-left-color: var(--low); }
+  .alert-title { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+  .alert-desc { font-size: 12px; color: var(--text-muted); }
+  .alert-meta { display: flex; gap: 16px; margin-top: 8px; font-size: 11px; color: var(--text-dim); }
+
+  /* Animations */
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+  .animate-in { animation: fadeUp 0.4s ease forwards; }
+  .delay-1 { animation-delay: 0.05s; opacity: 0; }
+  .delay-2 { animation-delay: 0.1s; opacity: 0; }
+  .delay-3 { animation-delay: 0.15s; opacity: 0; }
+  .delay-4 { animation-delay: 0.2s; opacity: 0; }
+
+  /* Loading */
+  .spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 40px auto; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Empty state */
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+  .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+  .empty-text { font-size: 15px; }
+  .empty-sub { font-size: 13px; margin-top: 8px; color: var(--text-dim); }
+
+  /* Responsive */
+  @media (max-width: 1024px) {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 768px) {
+    .sidebar { transform: translateX(-100%); }
+    .sidebar.open { transform: translateX(0); }
+    .main-content { margin-left: 0; padding: 20px 16px; }
+    .stats-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+const { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, RadarChart, PolarGrid, PolarAngleAxis, Radar, CartesianGrid } = Recharts;
+
+// === API Base URL ===
+const API = window.location.origin + '/api/v1';
+
+// === Constants ===
+const RISK_NAMES = { critical: '严重', high: '高风险', medium: '中等', low: '低风险' };
+const RISK_COLORS = { critical: '#ef4444', high: '#f97316', medium: '#eab308', low: '#22c55e' };
+const TYPE_NAMES = {
+  content_similarity: '文本相似度', metadata_match: '元数据关联', format_match: '格式指纹',
+  timestamp_cluster: '时间戳聚集', entity_cross: '实体交叉', error_pattern: '错误模式', price_analysis: '报价分析',
+};
+const NAV_ITEMS = [
+  { key: 'dashboard', icon: '📊', label: '总览看板' },
+  { key: 'projects', icon: '📁', label: '项目管理' },
+  { key: 'analysis', icon: '🔍', label: '分析详情' },
+  { key: 'alerts', icon: '🚨', label: '风险预警' },
+];
+
+// === API Helper ===
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    headers: { 'Content-Type': 'application/json', ...opts.headers },
+    ...opts,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `API Error ${res.status}`);
+  }
+  return res.json();
+}
+
+// === Components ===
+
+function RiskGauge({ score, level }) {
+  const r = 65, c = 2 * Math.PI * r;
+  const pct = Math.min(score / 100, 1);
+  const color = RISK_COLORS[level] || RISK_COLORS.low;
+  return (
+    <div className="risk-gauge">
+      <svg width="160" height="160">
+        <circle cx="80" cy="80" r={r} fill="none" stroke="var(--border)" strokeWidth="8" />
+        <circle cx="80" cy="80" r={r} fill="none" stroke={color} strokeWidth="8"
+          strokeDasharray={c} strokeDashoffset={c * (1 - pct)}
+          strokeLinecap="round" style={{ transition: 'stroke-dashoffset 1s ease' }} />
+      </svg>
+      <div className="risk-gauge-value">
+        <div className="risk-gauge-score" style={{ color }}>{score.toFixed(1)}</div>
+        <div className="risk-gauge-label">{RISK_NAMES[level] || '低风险'}</div>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, tag, tagClass, delay = 0 }) {
+  return (
+    <div className={`stat-card animate-in delay-${delay}`}>
+      <div className="stat-label">{label}</div>
+      <div className="stat-value">{value}</div>
+      {tag && <span className={`stat-tag ${tagClass || ''}`}>{tag}</span>}
+    </div>
+  );
+}
+
+// === Dashboard Page ===
+function DashboardPage({ onNavigate }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api('/risk/dashboard').then(setData).catch(console.error).finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="spinner" />;
+  if (!data) return <div className="empty-state"><div className="empty-icon">📊</div><div className="empty-text">暂无数据</div></div>;
+
+  const dist = data.risk_distribution || {};
+  const pieData = Object.entries(dist).filter(([,v]) => v > 0).map(([k, v]) => ({ name: RISK_NAMES[k], value: v, color: RISK_COLORS[k] }));
+  const topProjects = data.top_risk_projects || [];
+
+  return (
+    <div>
+      <div className="page-header">
+        <div className="page-title">总览看板</div>
+        <div className="page-desc">全局风险态势一览</div>
+      </div>
+
+      <div className="stats-grid">
+        <StatCard label="项目总数" value={data.total_projects} delay={1} />
+        <StatCard label="严重风险" value={dist.critical || 0} tag="CRITICAL" tagClass="tag-critical" delay={2} />
+        <StatCard label="高风险" value={dist.high || 0} tag="HIGH" tagClass="tag-high" delay={3} />
+        <StatCard label="中低风险" value={(dist.medium || 0) + (dist.low || 0)} tag="NORMAL" tagClass="tag-low" delay={4} />
+      </div>
+
+      <div className="grid-2">
+        <div className="card animate-in delay-2">
+          <div className="card-title">风险分布</div>
+          {pieData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={240}>
+              <PieChart>
+                <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={90} dataKey="value" paddingAngle={3}>
+                  {pieData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                </Pie>
+                <Tooltip contentStyle={{ background: '#1a2332', border: '1px solid #2d3f54', borderRadius: 8, fontSize: 12 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : <div className="empty-state" style={{padding: '40px'}}><div className="empty-text">暂无风险数据</div></div>}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8 }}>
+            {pieData.map(d => (
+              <span key={d.name} style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: d.color, display: 'inline-block' }} />
+                {d.name} ({d.value})
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="card animate-in delay-3">
+          <div className="card-title">高风险项目</div>
+          {topProjects.length > 0 ? (
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>项目名称</th><th>评分</th><th>等级</th></tr></thead>
+                <tbody>
+                  {topProjects.map(p => (
+                    <tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => onNavigate('analysis', p.id)}>
+                      <td style={{ fontWeight: 500 }}>{p.name}</td>
+                      <td><span style={{ fontWeight: 700, color: RISK_COLORS[p.risk_level] }}>{p.risk_score?.toFixed(1)}</span></td>
+                      <td><span className={`badge tag-${p.risk_level}`}>{RISK_NAMES[p.risk_level]}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <div className="empty-state" style={{padding: '40px'}}><div className="empty-text">暂无高风险项目</div></div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// === Projects Page ===
+function ProjectsPage({ onNavigate }) {
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [form, setForm] = useState({ name: '', project_code: '', description: '' });
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api('/projects/').then(d => setProjects(d.items || [])).catch(console.error).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const createProject = async () => {
+    if (!form.name.trim()) return;
+    try {
+      await api('/projects/', { method: 'POST', body: JSON.stringify(form) });
+      setShowCreate(false);
+      setForm({ name: '', project_code: '', description: '' });
+      load();
+    } catch (e) { alert(e.message); }
+  };
+
+  const deleteProject = async (id) => {
+    if (!confirm('确定删除该项目？')) return;
+    try { await api(`/projects/${id}`, { method: 'DELETE' }); load(); } catch (e) { alert(e.message); }
+  };
+
+  return (
+    <div>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div className="page-title">项目管理</div>
+          <div className="page-desc">创建和管理招标项目</div>
+        </div>
+        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>＋ 新建项目</button>
+      </div>
+
+      {loading ? <div className="spinner" /> : projects.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-icon">📁</div>
+          <div className="empty-text">暂无项目</div>
+          <div className="empty-sub">点击"新建项目"开始分析</div>
+        </div>
+      ) : (
+        <div className="card">
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>项目名称</th><th>编号</th><th>文档数</th><th>风险评分</th><th>等级</th><th>状态</th><th>操作</th></tr></thead>
+              <tbody>
+                {projects.map(p => (
+                  <tr key={p.id}>
+                    <td style={{ fontWeight: 500, cursor: 'pointer' }} onClick={() => onNavigate('analysis', p.id)}>{p.name}</td>
+                    <td style={{ color: 'var(--text-muted)' }}>{p.project_code || '-'}</td>
+                    <td>{p.document_count}</td>
+                    <td><span style={{ fontWeight: 700, color: RISK_COLORS[p.risk_level] || 'var(--text)' }}>{p.risk_score?.toFixed(1) || '0.0'}</span></td>
+                    <td><span className={`badge tag-${p.risk_level || 'low'}`}>{RISK_NAMES[p.risk_level] || '低风险'}</span></td>
+                    <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>{p.status}</td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button className="btn btn-sm" onClick={() => onNavigate('analysis', p.id)}>查看</button>
+                        <button className="btn btn-sm btn-danger" onClick={() => deleteProject(p.id)}>删除</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {showCreate && (
+        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">新建项目</div>
+            <div className="form-group">
+              <label className="form-label">项目名称 *</label>
+              <input className="form-input" placeholder="如：XX市政府采购项目" value={form.name}
+                onChange={e => setForm({ ...form, name: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">项目编号</label>
+              <input className="form-input" placeholder="如：GP-2025-001" value={form.project_code}
+                onChange={e => setForm({ ...form, project_code: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">项目描述</label>
+              <textarea className="form-textarea" placeholder="项目描述..." value={form.description}
+                onChange={e => setForm({ ...form, description: e.target.value })} />
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+              <button className="btn" onClick={() => setShowCreate(false)}>取消</button>
+              <button className="btn btn-primary" onClick={createProject}>创建</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// === Analysis Detail Page ===
+function AnalysisPage({ projectId, onNavigate }) {
+  const [project, setProject] = useState(null);
+  const [docs, setDocs] = useState([]);
+  const [results, setResults] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadFiles, setUploadFiles] = useState([]);
+  const [companyNames, setCompanyNames] = useState('');
+  const fileInputRef = useRef(null);
+
+  const load = useCallback(async () => {
+    if (!projectId) return;
+    setLoading(true);
+    try {
+      const [p, d] = await Promise.all([
+        api(`/projects/${projectId}`),
+        api(`/documents/${projectId}`),
+      ]);
+      setProject(p);
+      setDocs(d);
+      // Try to load existing results
+      try {
+        const r = await api(`/analysis/results/${projectId}`);
+        setResults(r);
+      } catch { setResults(null); }
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  }, [projectId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleUpload = async () => {
+    if (uploadFiles.length === 0) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      uploadFiles.forEach(f => formData.append('files', f));
+      if (companyNames.trim()) formData.append('company_names', companyNames.trim());
+      const res = await fetch(`${API}/documents/upload/${projectId}`, { method: 'POST', body: formData });
+      if (!res.ok) throw new Error((await res.json()).detail || 'Upload failed');
+      setUploadFiles([]);
+      setCompanyNames('');
+      load();
+    } catch (e) { alert(e.message); }
+    setUploading(false);
+  };
+
+  const runAnalysis = async () => {
+    setAnalyzing(true);
+    try {
+      const r = await api(`/analysis/run/${projectId}`, { method: 'POST' });
+      setResults(r);
+      load();
+    } catch (e) { alert(e.message); }
+    setAnalyzing(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    e.currentTarget.classList.remove('dragover');
+    const files = Array.from(e.dataTransfer.files).filter(f => /\.(pdf|docx?)$/i.test(f.name));
+    setUploadFiles(prev => [...prev, ...files]);
+  };
+
+  if (!projectId) return (
+    <div className="empty-state"><div className="empty-icon">🔍</div><div className="empty-text">请先选择一个项目</div>
+      <button className="btn" style={{ marginTop: 16 }} onClick={() => onNavigate('projects')}>去项目列表</button></div>
+  );
+  if (loading) return <div className="spinner" />;
+  if (!project) return <div className="empty-state"><div className="empty-text">项目不存在</div></div>;
+
+  const dimScores = results?.analysis_summary?.dimension_scores || {};
+  const radarData = Object.entries(TYPE_NAMES).map(([k, v]) => ({
+    dim: v, score: Math.round((dimScores[k] || 0) * 100),
+  }));
+
+  return (
+    <div>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, cursor: 'pointer' }} onClick={() => onNavigate('projects')}>← 返回项目列表</div>
+          <div className="page-title">{project.name}</div>
+          <div className="page-desc">{project.project_code || ''} · {docs.length} 份文档</div>
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button className="btn" onClick={() => window.open(`${API}/report/excel/${projectId}`)}>📥 Excel报告</button>
+          <button className="btn" onClick={() => window.open(`${API}/report/pdf/${projectId}`)}>📄 PDF报告</button>
+          <button className="btn btn-primary" onClick={runAnalysis} disabled={analyzing || docs.length < 2}>
+            {analyzing ? '分析中...' : '▶ 执行分析'}
+          </button>
+        </div>
+      </div>
+
+      {/* Risk overview if results exist */}
+      {results && results.total_alerts > 0 && (
+        <div className="stats-grid animate-in">
+          <StatCard label="风险评分" value={results.risk_score?.toFixed(1) || '0.0'} tag={RISK_NAMES[results.risk_level]} tagClass={`tag-${results.risk_level}`} />
+          <StatCard label="预警总数" value={results.total_alerts} />
+          <StatCard label="文档数量" value={results.total_documents} />
+          <StatCard label="分析状态" value="已完成" tag="DONE" tagClass="tag-low" />
+        </div>
+      )}
+
+      {/* Charts */}
+      {results && results.total_alerts > 0 && (
+        <div className="grid-2 animate-in delay-1">
+          <div className="card">
+            <div className="card-title">风险雷达图</div>
+            <ResponsiveContainer width="100%" height={280}>
+              <RadarChart data={radarData}>
+                <PolarGrid stroke="var(--border)" />
+                <PolarAngleAxis dataKey="dim" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
+                <Radar dataKey="score" stroke="#3b82f6" fill="rgba(59,130,246,0.2)" strokeWidth={2} />
+                <Tooltip contentStyle={{ background: '#1a2332', border: '1px solid #2d3f54', borderRadius: 8, fontSize: 12 }} />
+              </RadarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="card">
+            <div className="card-title">综合风险评分</div>
+            <div style={{ padding: '20px 0' }}>
+              <RiskGauge score={results.risk_score || 0} level={results.risk_level || 'low'} />
+            </div>
+            <div style={{ textAlign: 'center', marginTop: 12 }}>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                Phase2检测：实体交叉 {results.analysis_summary?.phase2_summary?.entity_cross_alerts || 0} 项 · 
+                错误模式 {results.analysis_summary?.phase2_summary?.error_pattern_alerts || 0} 项 · 
+                报价异常 {results.analysis_summary?.phase2_summary?.price_alerts || 0} 项
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload section */}
+      <div className="card animate-in delay-2" style={{ marginBottom: 20 }}>
+        <div className="card-title">上传投标文档</div>
+        <div className="upload-zone"
+          onDrop={handleDrop}
+          onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('dragover'); }}
+          onDragLeave={e => e.currentTarget.classList.remove('dragover')}
+          onClick={() => fileInputRef.current?.click()}>
+          <div className="upload-icon">📎</div>
+          <div className="upload-text">拖放 PDF/DOCX 文件到这里，或点击选择</div>
+          <input ref={fileInputRef} type="file" multiple accept=".pdf,.docx,.doc" hidden
+            onChange={e => setUploadFiles(prev => [...prev, ...Array.from(e.target.files)])} />
+        </div>
+        {uploadFiles.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            {uploadFiles.map((f, i) => (
+              <div className="file-item" key={i}>
+                <span className="file-name">📄 {f.name} <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>({(f.size / 1024).toFixed(0)} KB)</span></span>
+                <button className="btn btn-sm btn-danger" onClick={() => setUploadFiles(prev => prev.filter((_, j) => j !== i))}>移除</button>
+              </div>
+            ))}
+            <div className="form-group" style={{ marginTop: 12 }}>
+              <label className="form-label">投标单位名称（逗号分隔，与文件顺序对应）</label>
+              <input className="form-input" placeholder="如：A建设公司, B工程公司, C装饰公司"
+                value={companyNames} onChange={e => setCompanyNames(e.target.value)} />
+            </div>
+            <button className="btn btn-primary" style={{ marginTop: 8 }} onClick={handleUpload} disabled={uploading}>
+              {uploading ? '上传中...' : `上传 ${uploadFiles.length} 个文件`}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Documents list */}
+      {docs.length > 0 && (
+        <div className="card animate-in delay-3" style={{ marginBottom: 20 }}>
+          <div className="card-title">已上传文档 ({docs.length})</div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>投标单位</th><th>文件名</th><th>类型</th><th>大小</th><th>作者</th><th>创建软件</th><th>页数</th><th>状态</th></tr></thead>
+              <tbody>
+                {docs.map(d => (
+                  <tr key={d.id}>
+                    <td style={{ fontWeight: 500 }}>{d.company_name || '-'}</td>
+                    <td>{d.file_name}</td>
+                    <td><span className="badge" style={{ background: 'var(--accent-glow)', color: 'var(--accent)' }}>{d.file_type?.toUpperCase()}</span></td>
+                    <td style={{ color: 'var(--text-muted)' }}>{d.file_size ? `${(d.file_size / 1024).toFixed(0)} KB` : '-'}</td>
+                    <td style={{ color: 'var(--text-muted)' }}>{d.meta_author || '-'}</td>
+                    <td style={{ color: 'var(--text-muted)' }}>{d.meta_creator || '-'}</td>
+                    <td>{d.page_count || '-'}</td>
+                    <td><span className={`badge ${d.parsed === 1 ? 'tag-low' : d.parsed === 2 ? 'tag-critical' : 'tag-medium'}`}>
+                      {d.parsed === 1 ? '已解析' : d.parsed === 2 ? '失败' : '待解析'}
+                    </span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Analysis results detail */}
+      {results?.results?.length > 0 && (
+        <div className="card animate-in delay-4">
+          <div className="card-title">检测结果明细 ({results.results.length} 项预警)</div>
+          {results.results.sort((a, b) => b.score - a.score).map((r, i) => (
+            <div className={`alert-item alert-${r.risk_level}`} key={r.id || i}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="alert-title">{TYPE_NAMES[r.analysis_type] || r.analysis_type}</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ fontWeight: 700, color: RISK_COLORS[r.risk_level], fontSize: 15 }}>{(r.score * 100).toFixed(0)}%</span>
+                  <span className={`badge tag-${r.risk_level}`}>{RISK_NAMES[r.risk_level]}</span>
+                </div>
+              </div>
+              <div className="alert-desc">{r.summary}</div>
+              <div className="alert-meta">
+                {r.company_a && <span>🏢 {r.company_a}</span>}
+                {r.company_b && <span>↔ {r.company_b}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// === Alerts Page ===
+function AlertsPage({ onNavigate }) {
+  const [projects, setProjects] = useState([]);
+  const [selectedProject, setSelectedProject] = useState('');
+  const [alerts, setAlerts] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    api('/projects/').then(d => {
+      const items = d.items || [];
+      setProjects(items);
+      if (items.length > 0 && items[0].risk_score > 0) {
+        setSelectedProject(items[0].id);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!selectedProject) return;
+    setLoading(true);
+    api(`/risk/alerts/${selectedProject}`).then(setAlerts).catch(() => setAlerts([])).finally(() => setLoading(false));
+  }, [selectedProject]);
+
+  return (
+    <div>
+      <div className="page-header">
+        <div className="page-title">风险预警</div>
+        <div className="page-desc">查看项目风险预警详情</div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="form-group" style={{ marginBottom: 0 }}>
+          <label className="form-label">选择项目</label>
+          <select className="form-input" value={selectedProject} onChange={e => setSelectedProject(e.target.value)}
+            style={{ cursor: 'pointer' }}>
+            <option value="">-- 请选择项目 --</option>
+            {projects.map(p => (
+              <option key={p.id} value={p.id}>{p.name} ({p.risk_score?.toFixed(1) || 0}分)</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {loading ? <div className="spinner" /> : !selectedProject ? (
+        <div className="empty-state"><div className="empty-icon">🚨</div><div className="empty-text">请选择一个项目查看预警</div></div>
+      ) : alerts.length === 0 ? (
+        <div className="empty-state"><div className="empty-icon">✅</div><div className="empty-text">该项目暂无风险预警</div></div>
+      ) : (
+        <div className="card">
+          <div className="card-title">预警列表 ({alerts.length} 项)</div>
+          {alerts.map((a, i) => (
+            <div className={`alert-item alert-${a.risk_level}`} key={i}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="alert-title">{a.title}</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ fontWeight: 700, color: RISK_COLORS[a.risk_level], fontSize: 15 }}>{(a.score * 100).toFixed(0)}%</span>
+                  <span className={`badge tag-${a.risk_level}`}>{RISK_NAMES[a.risk_level]}</span>
+                </div>
+              </div>
+              <div className="alert-desc">{a.description}</div>
+              {a.involved_companies?.length > 0 && (
+                <div className="alert-meta">
+                  {a.involved_companies.map((c, j) => <span key={j}>🏢 {c}</span>)}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// === Main App ===
+function App() {
+  const [page, setPage] = useState('dashboard');
+  const [projectId, setProjectId] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const navigate = (target, id = null) => {
+    setPage(target);
+    if (id) setProjectId(id);
+    setSidebarOpen(false);
+  };
+
+  const renderPage = () => {
+    switch (page) {
+      case 'dashboard': return <DashboardPage onNavigate={navigate} />;
+      case 'projects': return <ProjectsPage onNavigate={navigate} />;
+      case 'analysis': return <AnalysisPage projectId={projectId} onNavigate={navigate} />;
+      case 'alerts': return <AlertsPage onNavigate={navigate} />;
+      default: return <DashboardPage onNavigate={navigate} />;
+    }
+  };
+
+  return (
+    <div className="app-shell">
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+        <div className="sidebar-header">
+          <div className="logo-text">串标围标分析系统</div>
+          <div className="logo-sub">INTELLIGENT ANALYSIS</div>
+        </div>
+        <nav className="nav-items">
+          {NAV_ITEMS.map(item => (
+            <div key={item.key} className={`nav-item ${page === item.key ? 'active' : ''}`}
+              onClick={() => navigate(item.key)}>
+              <span className="nav-icon">{item.icon}</span>
+              {item.label}
+            </div>
+          ))}
+        </nav>
+        <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--text-dim)' }}>
+          v2.0 · Phase 2 · AI 智能检测
+        </div>
+      </aside>
+
+      <main className="main-content">
+        {renderPage()}
+      </main>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
