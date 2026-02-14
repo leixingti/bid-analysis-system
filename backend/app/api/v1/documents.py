@@ -96,10 +96,10 @@ async def upload_documents(
     for doc in uploaded_docs:
         await db.refresh(doc)
 
-    return [DocumentResponse(
+return [DocumentResponse(
         **{c.name: getattr(d, c.name) for c in d.__table__.columns if c.name != "full_text"},
-        fonts_used=d.fonts_used or [],
     ) for d in uploaded_docs]
+
 
 
 @router.get("/{project_id}", response_model=List[DocumentResponse])
@@ -109,10 +109,10 @@ async def list_documents(project_id: str, db: AsyncSession = Depends(get_db)):
         select(Document).where(Document.project_id == project_id).order_by(Document.created_at)
     )
     docs = result.scalars().all()
-    return [DocumentResponse(
+return [DocumentResponse(
         **{c.name: getattr(d, c.name) for c in d.__table__.columns if c.name != "full_text"},
-        fonts_used=d.fonts_used or [],
     ) for d in docs]
+
 
 
 @router.get("/detail/{doc_id}", response_model=DocumentResponse)
@@ -122,9 +122,8 @@ async def get_document(doc_id: str, db: AsyncSession = Depends(get_db)):
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="文档不存在")
-    return DocumentResponse(
+return DocumentResponse(
         **{c.name: getattr(doc, c.name) for c in doc.__table__.columns if c.name != "full_text"},
-        fonts_used=doc.fonts_used or [],
     )
 
 
