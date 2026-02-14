@@ -7,7 +7,17 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.6/babel.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.10.3/Recharts.min.js"></script>
+<script src="https://unpkg.com/recharts@2.10.3/umd/Recharts.min.js"></script>
+<script>
+// Fallback: if Recharts failed to load, provide empty stubs so app doesn't crash
+if (typeof Recharts === 'undefined') {
+  window.Recharts = {};
+  ['BarChart','Bar','XAxis','YAxis','Tooltip','ResponsiveContainer','PieChart','Pie','Cell',
+   'RadarChart','PolarGrid','PolarAngleAxis','Radar','CartesianGrid'].forEach(function(n) {
+    Recharts[n] = function(props) { return React.createElement('div', null, props.children || ''); };
+  });
+}
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
 <style>
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -808,10 +818,84 @@ function AlertsPage({ onNavigate }) {
 }
 
 // === Main App ===
+function LoginPage({ onLogin }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [isRegister, setIsRegister] = useState(false);
+  const [fullName, setFullName] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!username || !password) { setError('请输入用户名和密码'); return; }
+    setLoading(true); setError('');
+    try {
+      const endpoint = isRegister ? '/auth/register' : '/auth/login';
+      const params = new URLSearchParams({ username, password });
+      if (isRegister && fullName) params.append('full_name', fullName);
+      const res = await fetch(API + endpoint + '?' + params.toString(), { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || '操作失败');
+      localStorage.setItem('token', data.access_token);
+      onLogin(data.user, data.access_token);
+    } catch (e) { setError(e.message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="card" style={{ width: 380, padding: 32 }}>
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--accent)' }}>🔍</div>
+          <div style={{ fontSize: 18, fontWeight: 700, marginTop: 8 }}>串标围标智能分析系统</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{isRegister ? '创建新账号' : '登录系统'}</div>
+        </div>
+        {error && <div style={{ background: 'var(--critical-bg)', color: 'var(--critical)', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 }}>{error}</div>}
+        <input type="text" placeholder="用户名" value={username} onChange={e => setUsername(e.target.value)}
+          style={{ width: '100%', padding: '10px 14px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 14, marginBottom: 10, outline: 'none' }} />
+        {isRegister && <input type="text" placeholder="姓名（选填）" value={fullName} onChange={e => setFullName(e.target.value)}
+          style={{ width: '100%', padding: '10px 14px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 14, marginBottom: 10, outline: 'none' }} />}
+        <input type="password" placeholder="密码" value={password} onChange={e => setPassword(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+          style={{ width: '100%', padding: '10px 14px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 14, marginBottom: 16, outline: 'none' }} />
+        <button onClick={handleSubmit} disabled={loading}
+          style={{ width: '100%', padding: '10px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}>
+          {loading ? '请稍候...' : (isRegister ? '注 册' : '登 录')}
+        </button>
+        <div style={{ textAlign: 'center', marginTop: 14, fontSize: 13, color: 'var(--text-muted)' }}>
+          {isRegister ? '已有账号？' : '没有账号？'}
+          <span style={{ color: 'var(--accent)', cursor: 'pointer', marginLeft: 4 }}
+            onClick={() => { setIsRegister(!isRegister); setError(''); }}>
+            {isRegister ? '去登录' : '注册'}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [page, setPage] = useState('dashboard');
   const [projectId, setProjectId] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('token'));
+
+  // Check existing token
+  useEffect(() => {
+    const t = localStorage.getItem('token');
+    if (t) {
+      fetch(API + '/auth/me', { headers: { 'Authorization': 'Bearer ' + t } })
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(u => { setUser(u); setToken(t); })
+        .catch(() => { localStorage.removeItem('token'); setToken(null); });
+    }
+  }, []);
+
+  const handleLogin = (u, t) => { setUser(u); setToken(t); };
+  const handleLogout = () => { localStorage.removeItem('token'); setUser(null); setToken(null); };
+
+  if (!token) return <LoginPage onLogin={handleLogin} />;
 
   const navigate = (target, id = null) => {
     setPage(target);
@@ -846,7 +930,11 @@ function App() {
           ))}
         </nav>
         <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--text-dim)' }}>
-          v2.0 · Phase 2 · AI 智能检测
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>{user?.username || '用户'}</span>
+            <span style={{ color: 'var(--accent)', cursor: 'pointer' }} onClick={handleLogout}>退出</span>
+          </div>
+          <div style={{ marginTop: 6 }}>v2.1 · Phase 2 · AI 智能检测</div>
         </div>
       </aside>
 
