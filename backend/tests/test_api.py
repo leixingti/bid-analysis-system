@@ -1,10 +1,15 @@
 """基础 API 测试"""
 import sys
 import os
+import asyncio
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from fastapi.testclient import TestClient
 from app.main import app
+from app.core.database import init_db
+
+# 确保测试前创建表
+asyncio.get_event_loop().run_until_complete(init_db())
 
 client = TestClient(app)
 
@@ -44,7 +49,6 @@ def test_list_projects():
 
 
 def test_docs_endpoint():
-    """先创建项目，再查看其文档列表"""
     resp = client.post("/api/v1/projects/", json={
         "name": "文档测试项目",
         "project_code": "ZB-2026-002",
