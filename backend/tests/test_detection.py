@@ -18,8 +18,8 @@ def test_identical_text_similarity():
     text = "本项目采用钢筋混凝土框架结构，基础采用桩基础。施工工期为180个日历天。"
     result = ContentSimilarityDetector.compute_similarity(text, text)
     assert isinstance(result, dict)
-    assert "similarity_score" in result or "overall_similarity" in result
-    score = result.get("similarity_score", result.get("overall_similarity", 0))
+    # 接受 score 或 similarity_score 或 overall_similarity
+    score = result.get("score", result.get("similarity_score", result.get("overall_similarity", 0)))
     assert score > 0.8
 
 
@@ -28,14 +28,14 @@ def test_different_text_similarity():
     text_b = "今天天气晴朗，适合户外活动，公园里人很多。"
     result = ContentSimilarityDetector.compute_similarity(text_a, text_b)
     assert isinstance(result, dict)
-    score = result.get("similarity_score", result.get("overall_similarity", 0))
+    score = result.get("score", result.get("similarity_score", result.get("overall_similarity", 0)))
     assert score < 0.5
 
 
 def test_batch_compare():
     docs = [
-        {"id": "1", "company_name": "公司A", "full_text": "本项目采用钢结构框架"},
-        {"id": "2", "company_name": "公司B", "full_text": "本项目采用钢结构框架体系"},
+        {"id": "1", "company_name": "公司A", "full_text": "本项目采用钢结构框架", "text": "本项目采用钢结构框架"},
+        {"id": "2", "company_name": "公司B", "full_text": "本项目采用钢结构框架体系", "text": "本项目采用钢结构框架体系"},
     ]
     results = ContentSimilarityDetector.batch_compare(docs)
     assert isinstance(results, list)
@@ -68,8 +68,10 @@ def test_metadata_compare_pair():
 
 def test_metadata_batch_compare():
     docs = [
-        {"id": "1", "company_name": "公司A", "meta_author": "张三", "meta_created_time": "2024-01-15T10:00:00"},
-        {"id": "2", "company_name": "公司B", "meta_author": "张三", "meta_created_time": "2024-01-15T10:03:00"},
+        {"id": "1", "company_name": "公司A", "meta_author": "张三",
+         "meta_created_time": "2024-01-15T10:00:00", "metadata": {"author": "张三"}},
+        {"id": "2", "company_name": "公司B", "meta_author": "张三",
+         "meta_created_time": "2024-01-15T10:03:00", "metadata": {"author": "张三"}},
     ]
     results = MetadataDetector.batch_compare(docs)
     assert isinstance(results, list)
@@ -85,8 +87,8 @@ def test_entity_extract():
 
 def test_entity_cross_check():
     docs = [
-        {"id": "1", "company_name": "公司A", "full_text": "我公司即公司B具有丰富经验"},
-        {"id": "2", "company_name": "公司B", "full_text": "我公司具有丰富施工经验"},
+        {"id": "1", "company_name": "公司A", "full_text": "我公司即公司B具有丰富经验", "text": "我公司即公司B具有丰富经验"},
+        {"id": "2", "company_name": "公司B", "full_text": "我公司具有丰富施工经验", "text": "我公司具有丰富施工经验"},
     ]
     results = EntityCrossDetector.cross_check(docs)
     assert isinstance(results, list)
