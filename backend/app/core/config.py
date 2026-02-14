@@ -10,10 +10,8 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # Database — Railway auto-injects DATABASE_URL for PostgreSQL
-    # Railway format: postgresql://user:pass@host:port/dbname
-    # We need async driver: postgresql+asyncpg://...
     DATABASE_URL: str = "sqlite+aiosqlite:///./bid_analysis.db"
-    DATABASE_PRIVATE_URL: str = ""  # Railway private networking URL
+    DATABASE_PRIVATE_URL: str = ""
 
     # Security
     SECRET_KEY: str = "change-me-in-production-use-a-strong-random-key"
@@ -32,11 +30,7 @@ class Settings(BaseSettings):
 
     def get_async_database_url(self) -> str:
         """Convert DATABASE_URL to async-compatible format for Railway PostgreSQL."""
-        # Prefer private URL for Railway internal networking
         url = self.DATABASE_PRIVATE_URL or self.DATABASE_URL
-
-        # Railway provides: postgresql://user:pass@host:port/db
-        # SQLAlchemy async needs: postgresql+asyncpg://user:pass@host:port/db
         if url.startswith("postgresql://"):
             return url.replace("postgresql://", "postgresql+asyncpg://", 1)
         elif url.startswith("postgres://"):
@@ -46,5 +40,4 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Ensure upload directory exists
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
