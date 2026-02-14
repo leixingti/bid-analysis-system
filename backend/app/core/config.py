@@ -28,9 +28,7 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "./uploads"
     MAX_FILE_SIZE_MB: int = 100
 
-    class Config:
-        env_file = ".env"
-        extra = "allow"
+    model_config = {"env_file": ".env", "extra": "allow"}
 
     def get_async_database_url(self) -> str:
         """Convert DATABASE_URL to async-compatible format for Railway PostgreSQL."""
