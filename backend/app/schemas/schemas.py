@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -18,6 +18,8 @@ class ProjectUpdate(BaseModel):
 
 
 class ProjectResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     name: str
     project_code: Optional[str]
@@ -29,9 +31,6 @@ class ProjectResponse(BaseModel):
     updated_at: datetime
     document_count: int = 0
 
-    class Config:
-        from_attributes = True
-
 
 class ProjectListResponse(BaseModel):
     total: int
@@ -40,6 +39,8 @@ class ProjectListResponse(BaseModel):
 
 # ===== Document Schemas =====
 class DocumentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     project_id: str
     company_name: Optional[str]
@@ -60,9 +61,6 @@ class DocumentResponse(BaseModel):
     parsed: int = 0
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class DocumentMetadataCompare(BaseModel):
     """元数据比对结果"""
@@ -74,6 +72,8 @@ class DocumentMetadataCompare(BaseModel):
 
 # ===== Analysis Schemas =====
 class AnalysisResultResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     project_id: str
     analysis_type: str
@@ -86,9 +86,6 @@ class AnalysisResultResponse(BaseModel):
     summary: Optional[str]
     details: Dict[str, Any] = {}
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class AnalysisOverview(BaseModel):
