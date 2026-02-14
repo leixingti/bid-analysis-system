@@ -6,16 +6,16 @@ import os
 class Settings(BaseSettings):
     # App
     APP_NAME: str = "招投标串标围标分析系统"
-    APP_VERSION: str = "2.0.0"
+    APP_VERSION: str = "2.1.0"
     DEBUG: bool = False
 
-    # Database — Railway auto-injects DATABASE_URL for PostgreSQL
+    # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///./bid_analysis.db"
     DATABASE_PRIVATE_URL: str = ""
 
     # Security
     SECRET_KEY: str = "change-me-in-production-use-a-strong-random-key"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
     ALGORITHM: str = "HS256"
 
     # Analysis thresholds
@@ -26,10 +26,16 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "./uploads"
     MAX_FILE_SIZE_MB: int = 100
 
+    # S3/R2 object storage (optional, for persistent file storage)
+    S3_ENDPOINT: str = ""
+    S3_ACCESS_KEY: str = ""
+    S3_SECRET_KEY: str = ""
+    S3_BUCKET: str = "bid-documents"
+    S3_REGION: str = "auto"
+
     model_config = {"env_file": ".env", "extra": "allow"}
 
     def get_async_database_url(self) -> str:
-        """Convert DATABASE_URL to async-compatible format for Railway PostgreSQL."""
         url = self.DATABASE_PRIVATE_URL or self.DATABASE_URL
         if url.startswith("postgresql://"):
             return url.replace("postgresql://", "postgresql+asyncpg://", 1)
@@ -37,7 +43,10 @@ class Settings(BaseSettings):
             return url.replace("postgres://", "postgresql+asyncpg://", 1)
         return url
 
+    @property
+    def use_s3(self) -> bool:
+        return bool(self.S3_ENDPOINT and self.S3_ACCESS_KEY)
+
 
 settings = Settings()
-
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
