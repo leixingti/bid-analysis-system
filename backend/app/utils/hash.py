@@ -13,3 +13,8 @@ def compute_md5(file_path: str) -> str:
 def compute_text_hash(text: str) -> str:
     """计算文本内容MD5"""
     return hashlib.md5(text.encode("utf-8")).hexdigest()
+
+
+def md5_bytes(data: bytes) -> str:
+    """计算字节数据的MD5哈希"""
+    return hashlib.md5(data).hexdigest()
