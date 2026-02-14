@@ -45,7 +45,6 @@ def test_list_projects():
 
 def test_docs_endpoint():
     """先创建项目，再查看其文档列表"""
-    # Create project first
     resp = client.post("/api/v1/projects/", json={
         "name": "文档测试项目",
         "project_code": "ZB-2026-002",
@@ -53,12 +52,10 @@ def test_docs_endpoint():
     assert resp.status_code == 200
     project_id = resp.json()["id"]
 
-    # List documents for this project
     resp = client.get(f"/api/v1/documents/project/{project_id}")
     assert resp.status_code == 200
 
 
 def test_risk_dashboard():
     resp = client.get("/api/v1/risk/dashboard")
-    # Dashboard might return 200 or 404 depending on data
     assert resp.status_code in (200, 404)
