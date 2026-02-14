@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Float, DateTime, Text, JSON, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Column, String, Integer, Float, DateTime, Text, JSON, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -23,6 +23,18 @@ class RiskLevel(str, enum.Enum):
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    username = Column(String(100), unique=True, nullable=False, index=True)
+    hashed_password = Column(String(255), nullable=False)
+    full_name = Column(String(255), default="")
+    role = Column(String(20), default="analyst", comment="admin/analyst/auditor")
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Project(Base):
@@ -54,7 +66,6 @@ class Document(Base):
     file_size = Column(Integer, comment="文件大小(字节)")
     file_hash = Column(String(64), comment="文件MD5")
 
-    # Metadata extracted from document
     meta_author = Column(String(255), comment="文档作者")
     meta_company = Column(String(255), comment="文档公司")
     meta_last_modified_by = Column(String(255), comment="最后修改人")
@@ -65,12 +76,10 @@ class Document(Base):
     meta_software_version = Column(String(100), comment="软件版本号")
     meta_extra = Column(JSON, default=dict, comment="其他元数据")
 
-    # Extracted content
     full_text = Column(Text, comment="全文内容")
     text_length = Column(Integer, default=0)
     page_count = Column(Integer, default=0)
 
-    # Format info
     fonts_used = Column(JSON, default=list, comment="使用的字体列表")
     format_info = Column(JSON, default=dict, comment="格式信息(行距、页边距等)")
 
@@ -86,16 +95,13 @@ class AnalysisResult(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     project_id = Column(String, ForeignKey("projects.id"), nullable=False)
 
-    # Analysis type
-    analysis_type = Column(String(50), nullable=False, comment="content_similarity/metadata_match/timestamp_cluster/format_match/error_pattern")
+    analysis_type = Column(String(50), nullable=False)
 
-    # Involved documents
     doc_id_a = Column(String, ForeignKey("documents.id"), nullable=True)
     doc_id_b = Column(String, ForeignKey("documents.id"), nullable=True)
     company_a = Column(String(255))
     company_b = Column(String(255))
 
-    # Result
     score = Column(Float, default=0.0, comment="检测得分 0-1")
     risk_level = Column(String(20), default=RiskLevel.LOW)
     summary = Column(Text, comment="检测结果摘要")
