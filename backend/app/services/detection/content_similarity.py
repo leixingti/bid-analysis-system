@@ -236,7 +236,7 @@ class ContentSimilarityDetector:
         for i, sa in enumerate(sents_a):
             for j, sb in enumerate(sents_b):
                 sim = ContentSimilarityDetector._tfidf_cosine_similarity(sa, sb)
-                if sim > 0.6:  # High sentence-level similarity
+                if sim > 0.4:  # Sentence-level similarity threshold
                     segments.append({
                         "text_a_segment": sa[:200],
                         "text_b_segment": sb[:200],
