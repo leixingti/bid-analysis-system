@@ -212,15 +212,21 @@ def _apply_parsed_data(doc: Document, data: dict):
                 break
         if ts:
             try:
+                dt = None
                 if isinstance(ts, str) and ts.strip():
                     # 处理 PDF 格式的日期 D:20240101120000+08'00'
                     if ts.startswith("D:"):
                         ts_clean = ts[2:16].ljust(14, '0')
-                        setattr(doc, field, datetime.strptime(ts_clean, "%Y%m%d%H%M%S"))
+                        dt = datetime.strptime(ts_clean, "%Y%m%d%H%M%S")
                     else:
-                        setattr(doc, field, datetime.fromisoformat(ts.replace("Z", "+00:00")))
+                        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
                 elif hasattr(ts, 'year'):  # already a datetime
-                    setattr(doc, field, ts)
+                    dt = ts
+                # 🔧 关键修复：移除时区信息，确保存入 naive datetime
+                if dt is not None:
+                    if dt.tzinfo is not None:
+                        dt = dt.replace(tzinfo=None)
+                    setattr(doc, field, dt)
             except Exception as e:
                 logger.warning(f"时间解析失败 ({field}={ts}): {e}")
 
