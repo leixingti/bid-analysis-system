@@ -4,6 +4,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Optional
+from urllib.parse import quote
 
 from app.core.database import get_db
 from app.models.models import Project, Document, AnalysisResult
@@ -86,10 +87,11 @@ async def export_excel(project_id: str, db: AsyncSession = Depends(get_db)):
     buf = ExcelReportGenerator.generate(project_dict, doc_dicts, result_dicts, risk_summary)
 
     filename = f"串标分析报告_{project_dict.get('name', 'report')}.xlsx"
+    encoded_filename = quote(filename)
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"},
     )
 
 
@@ -101,8 +103,9 @@ async def export_pdf(project_id: str, db: AsyncSession = Depends(get_db)):
     buf = PDFReportGenerator.generate(project_dict, doc_dicts, result_dicts, risk_summary)
 
     filename = f"串标分析报告_{project_dict.get('name', 'report')}.pdf"
+    encoded_filename = quote(filename)
     return StreamingResponse(
         buf,
         media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"},
     )
