@@ -16,7 +16,7 @@ class ContentSimilarityDetector:
     def compute_similarity(text_a: str, text_b: str) -> Dict[str, Any]:
         """计算两段文本的综合相似度"""
         if not text_a or not text_b:
-            return {"score": 0.0, "details": {"error": "Empty text"}}
+            return {"score": 0.0, "details": {"error": "Empty text"}, "similar_segments": []}
 
         # Clean text
         text_a_clean = ContentSimilarityDetector._clean_text(text_a)
@@ -70,8 +70,8 @@ class ContentSimilarityDetector:
                     "company_a": documents[i].get("company", ""),
                     "company_b": documents[j].get("company", ""),
                     "score": sim["score"],
-                    "details": sim["details"],
-                    "similar_segments": sim["similar_segments"],
+                    "details": sim.get("details", {}),
+                    "similar_segments": sim.get("similar_segments", []),
                 })
         return results
 
