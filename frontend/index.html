@@ -632,7 +632,8 @@ function ProjectsPage({ onNavigate }) {
 function AlertItemWithDiff({ result: r }) {
   const [expanded, setExpanded] = useState(false);
   const segments = r.details?.similar_segments || [];
-  const hasDiff = r.analysis_type === 'content_similarity' && segments.length > 0;
+  const isContentSim = r.analysis_type === 'content_similarity';
+  const hasDetails = isContentSim && r.details;
 
   return (
     <div className={`alert-item alert-${r.risk_level}`}>
@@ -647,14 +648,49 @@ function AlertItemWithDiff({ result: r }) {
       <div className="alert-meta">
         {r.company_a && <span>🏢 {r.company_a}</span>}
         {r.company_b && <span>↔ {r.company_b}</span>}
-        {hasDiff && (
+        {hasDetails && (
           <span className="diff-toggle" onClick={() => setExpanded(!expanded)}>
-            {expanded ? '▼ 收起对比' : '▶ 查看相似段落'} ({segments.length} 处)
+            {expanded ? '▼ 收起详情' : '▶ 查看详情'}
+            {segments.length > 0 ? ` (${segments.length} 处相似)` : ''}
           </span>
         )}
       </div>
-      {expanded && hasDiff && (
-        <SimilarSegmentsDiff segments={segments} companyA={r.company_a} companyB={r.company_b} />
+      {expanded && hasDetails && (
+        <div style={{ marginTop: 12 }}>
+          {/* 分项得分 */}
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: segments.length > 0 ? 12 : 0 }}>
+            {r.details.simhash_similarity != null && (
+              <div style={{ padding: '6px 14px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }}>
+                <span style={{ color: 'var(--text-muted)' }}>SimHash: </span>
+                <span style={{ fontWeight: 700 }}>{(r.details.simhash_similarity * 100).toFixed(1)}%</span>
+              </div>
+            )}
+            {r.details.cosine_similarity != null && (
+              <div style={{ padding: '6px 14px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }}>
+                <span style={{ color: 'var(--text-muted)' }}>TF-IDF余弦: </span>
+                <span style={{ fontWeight: 700 }}>{(r.details.cosine_similarity * 100).toFixed(1)}%</span>
+              </div>
+            )}
+            {r.details.jaccard_similarity != null && (
+              <div style={{ padding: '6px 14px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }}>
+                <span style={{ color: 'var(--text-muted)' }}>Jaccard: </span>
+                <span style={{ fontWeight: 700 }}>{(r.details.jaccard_similarity * 100).toFixed(1)}%</span>
+              </div>
+            )}
+            {r.details.tokenizer && (
+              <div style={{ padding: '6px 14px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }}>
+                <span style={{ color: 'var(--text-muted)' }}>分词: </span>
+                <span style={{ fontWeight: 500 }}>{r.details.tokenizer}</span>
+              </div>
+            )}
+          </div>
+          {/* 相似段落对比 */}
+          {segments.length > 0 ? (
+            <SimilarSegmentsDiff segments={segments} companyA={r.company_a} companyB={r.company_b} />
+          ) : (
+            <div className="diff-empty">未检测到高相似度段落（句子级相似度均低于阈值）</div>
+          )}
+        </div>
       )}
     </div>
   );
