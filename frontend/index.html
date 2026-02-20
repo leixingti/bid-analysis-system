@@ -250,6 +250,54 @@ if (typeof Recharts === 'undefined') {
   .delay-3 { animation-delay: 0.15s; opacity: 0; }
   .delay-4 { animation-delay: 0.2s; opacity: 0; }
 
+  /* Diff view for similar segments */
+  .diff-toggle {
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-top: 8px; padding: 4px 12px; border-radius: 20px;
+    font-size: 11px; font-weight: 500; cursor: pointer;
+    background: rgba(59,130,246,0.1); color: var(--accent);
+    border: 1px solid rgba(59,130,246,0.2); transition: all 0.2s;
+  }
+  .diff-toggle:hover { background: rgba(59,130,246,0.2); }
+  .diff-panel {
+    margin-top: 12px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); overflow: hidden;
+    animation: fadeUp 0.3s ease;
+  }
+  .diff-header {
+    display: grid; grid-template-columns: 1fr 1fr;
+    background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border);
+  }
+  .diff-header-cell {
+    padding: 8px 14px; font-size: 11px; font-weight: 600;
+    color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .diff-header-cell:first-child { border-right: 1px solid var(--border); }
+  .diff-row {
+    display: grid; grid-template-columns: 1fr 1fr;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+  .diff-row:last-child { border-bottom: none; }
+  .diff-row:hover { background: rgba(59,130,246,0.03); }
+  .diff-cell {
+    padding: 10px 14px; font-size: 12px; line-height: 1.6;
+    color: var(--text); word-break: break-all;
+  }
+  .diff-cell:first-child { border-right: 1px solid var(--border); }
+  .diff-cell mark {
+    background: rgba(234,179,8,0.25); color: var(--text);
+    padding: 1px 2px; border-radius: 2px; border-bottom: 2px solid var(--medium);
+  }
+  .diff-score {
+    display: inline-block; margin-left: 8px; padding: 2px 8px;
+    border-radius: 10px; font-size: 10px; font-weight: 700;
+    background: rgba(239,68,68,0.15); color: var(--critical);
+  }
+  .diff-empty {
+    padding: 20px; text-align: center; font-size: 12px; color: var(--text-dim);
+  }
+
   /* Loading */
   .spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 40px auto; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -338,6 +386,64 @@ function StatCard({ label, value, tag, tagClass, delay = 0 }) {
       <div className="stat-label">{label}</div>
       <div className="stat-value">{value}</div>
       {tag && <span className={`stat-tag ${tagClass || ''}`}>{tag}</span>}
+    </div>
+  );
+}
+
+// === Similar Segments Diff Component ===
+function SimilarSegmentsDiff({ segments, companyA, companyB }) {
+  if (!segments || segments.length === 0) {
+    return <div className="diff-empty">未检测到高相似度段落</div>;
+  }
+
+  // Highlight common substrings between two texts
+  function highlightCommon(textA, textB) {
+    if (!textA || !textB) return { a: textA || '', b: textB || '' };
+    
+    // Find common words/phrases (2+ chars)
+    const wordsA = new Set(textA.match(/[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}/g) || []);
+    const wordsB = new Set(textB.match(/[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}/g) || []);
+    const common = [...wordsA].filter(w => wordsB.has(w) && w.length >= 2);
+    
+    if (common.length === 0) return { a: textA, b: textB };
+    
+    // Sort by length descending to match longer phrases first
+    common.sort((a, b) => b.length - a.length);
+    const pattern = new RegExp(`(${common.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'g');
+    
+    const markedA = textA.replace(pattern, '§mark§$1§/mark§');
+    const markedB = textB.replace(pattern, '§mark§$1§/mark§');
+    
+    return { a: markedA, b: markedB };
+  }
+
+  function renderMarkedText(text) {
+    const parts = text.split(/§\/?mark§/);
+    return parts.map((part, i) => 
+      i % 2 === 1 
+        ? React.createElement('mark', { key: i }, part)
+        : React.createElement(React.Fragment, { key: i }, part)
+    );
+  }
+
+  return (
+    <div className="diff-panel">
+      <div className="diff-header">
+        <div className="diff-header-cell">🏢 {companyA || '文档 A'}</div>
+        <div className="diff-header-cell">🏢 {companyB || '文档 B'}</div>
+      </div>
+      {segments.slice(0, 10).map((seg, idx) => {
+        const { a, b } = highlightCommon(seg.text_a_segment, seg.text_b_segment);
+        return (
+          <div className="diff-row" key={idx}>
+            <div className="diff-cell">
+              {renderMarkedText(a)}
+              <span className="diff-score">{(seg.similarity * 100).toFixed(0)}%</span>
+            </div>
+            <div className="diff-cell">{renderMarkedText(b)}</div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -517,6 +623,38 @@ function ProjectsPage({ onNavigate }) {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// === Alert Item with Expandable Diff ===
+function AlertItemWithDiff({ result: r }) {
+  const [expanded, setExpanded] = useState(false);
+  const segments = r.details?.similar_segments || [];
+  const hasDiff = r.analysis_type === 'content_similarity' && segments.length > 0;
+
+  return (
+    <div className={`alert-item alert-${r.risk_level}`}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="alert-title">{TYPE_NAMES[r.analysis_type] || r.analysis_type}</div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span style={{ fontWeight: 700, color: RISK_COLORS[r.risk_level], fontSize: 15 }}>{(r.score * 100).toFixed(0)}%</span>
+          <span className={`badge tag-${r.risk_level}`}>{RISK_NAMES[r.risk_level]}</span>
+        </div>
+      </div>
+      <div className="alert-desc">{r.summary}</div>
+      <div className="alert-meta">
+        {r.company_a && <span>🏢 {r.company_a}</span>}
+        {r.company_b && <span>↔ {r.company_b}</span>}
+        {hasDiff && (
+          <span className="diff-toggle" onClick={() => setExpanded(!expanded)}>
+            {expanded ? '▼ 收起对比' : '▶ 查看相似段落'} ({segments.length} 处)
+          </span>
+        )}
+      </div>
+      {expanded && hasDiff && (
+        <SimilarSegmentsDiff segments={segments} companyA={r.company_a} companyB={r.company_b} />
       )}
     </div>
   );
@@ -723,20 +861,7 @@ function AnalysisPage({ projectId, onNavigate }) {
         <div className="card animate-in delay-4">
           <div className="card-title">检测结果明细 ({results.results.length} 项预警)</div>
           {results.results.sort((a, b) => b.score - a.score).map((r, i) => (
-            <div className={`alert-item alert-${r.risk_level}`} key={r.id || i}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div className="alert-title">{TYPE_NAMES[r.analysis_type] || r.analysis_type}</div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <span style={{ fontWeight: 700, color: RISK_COLORS[r.risk_level], fontSize: 15 }}>{(r.score * 100).toFixed(0)}%</span>
-                  <span className={`badge tag-${r.risk_level}`}>{RISK_NAMES[r.risk_level]}</span>
-                </div>
-              </div>
-              <div className="alert-desc">{r.summary}</div>
-              <div className="alert-meta">
-                {r.company_a && <span>🏢 {r.company_a}</span>}
-                {r.company_b && <span>↔ {r.company_b}</span>}
-              </div>
-            </div>
+            <AlertItemWithDiff key={r.id || i} result={r} />
           ))}
         </div>
       )}
