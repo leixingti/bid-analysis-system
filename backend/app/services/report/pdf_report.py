@@ -78,8 +78,8 @@ class PDFReportGenerator:
         story.append(Paragraph(
             f"生成时间：{datetime.now().strftime('%Y年%m月%d日 %H:%M')}", styles["meta"]
         ))
-        risk_score = project.get("risk_score", 0)
-        risk_level = project.get("risk_level", "low")
+        risk_score = project.get("risk_score") or 0.0
+        risk_level = project.get("risk_level") or "low"
         story.append(Paragraph(
             f"综合风险评分：{risk_score:.1f} / 100（{RISK_NAMES.get(risk_level, '低风险')}）",
             styles["meta"]

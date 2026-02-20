@@ -80,8 +80,8 @@ class ExcelReportGenerator:
             ("项目编号", project.get("project_code", "N/A")),
             ("项目状态", project.get("status", "")),
             ("文档数量", str(project.get("document_count", 0))),
-            ("综合风险评分", f"{project.get('risk_score', 0):.1f} / 100"),
-            ("风险等级", RISK_NAMES.get(project.get("risk_level", "low"), "低风险")),
+            ("综合风险评分", f"{(project.get('risk_score') or 0.0):.1f} / 100"),
+            ("风险等级", RISK_NAMES.get(project.get("risk_level") or "low", "低风险")),
         ]
 
         row = 4
@@ -222,7 +222,7 @@ class ExcelReportGenerator:
                 TYPE_NAMES.get(r.get("analysis_type", ""), r.get("analysis_type", "")),
                 r.get("company_a", ""),
                 r.get("company_b", ""),
-                f"{r.get('score', 0):.1%}",
+                f"{(r.get('score') or 0):.1%}",
                 RISK_NAMES.get(risk, risk),
                 r.get("summary", ""),
             ]
