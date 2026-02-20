@@ -35,6 +35,9 @@ async def _get_report_data(project_id: str, db: AsyncSession):
     # Build dicts
     project_dict = {c.name: getattr(project, c.name) for c in project.__table__.columns}
     project_dict["document_count"] = len(documents)
+    # Ensure numeric fields are never None
+    project_dict["risk_score"] = project_dict.get("risk_score") or 0.0
+    project_dict["risk_level"] = project_dict.get("risk_level") or "low"
 
     doc_dicts = []
     for d in documents:
@@ -50,6 +53,13 @@ async def _get_report_data(project_id: str, db: AsyncSession):
         rd = {c.name: getattr(ar, c.name) for c in ar.__table__.columns}
         if rd.get("created_at") and hasattr(rd["created_at"], "strftime"):
             rd["created_at"] = rd["created_at"].strftime("%Y-%m-%d %H:%M")
+        # Ensure numeric/string fields are never None
+        rd["score"] = rd.get("score") or 0.0
+        rd["risk_level"] = rd.get("risk_level") or "low"
+        rd["summary"] = rd.get("summary") or ""
+        rd["company_a"] = rd.get("company_a") or ""
+        rd["company_b"] = rd.get("company_b") or ""
+        rd["analysis_type"] = rd.get("analysis_type") or ""
         result_dicts.append(rd)
 
     # Build risk summary
