@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List, Optional
+import logging
 
 from app.core.database import get_db
 from app.core.config import settings
@@ -16,6 +17,7 @@ from app.services.parsing.pdf_parser import PDFParser
 from app.services.parsing.docx_parser import DocxParser
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _doc_to_response(d: Document) -> DocumentResponse:
@@ -94,9 +96,10 @@ async def upload_documents(
             parsed_data = _parse_document(file_path, ext)
             _apply_parsed_data(doc, parsed_data)
             doc.parsed = 1
+            logger.info(f"✅ 文档解析成功: {file.filename}, 文本长度: {doc.text_length}")
         except Exception as e:
             doc.parsed = 2
-            print(f"Error parsing {file.filename}: {e}")
+            logger.error(f"❌ 文档解析失败 {file.filename}: {e}")
 
         uploaded_docs.append(doc)
 
@@ -141,7 +144,7 @@ async def reparse_document(doc_id: str, db: AsyncSession = Depends(get_db)):
         _apply_parsed_data(doc, parsed_data)
         doc.parsed = 1
         await db.commit()
-        return {"message": "解析成功", "doc_id": doc_id}
+        return {"message": "解析成功", "doc_id": doc_id, "text_length": doc.text_length}
     except Exception as e:
         doc.parsed = 2
         await db.commit()
@@ -182,31 +185,46 @@ def _apply_parsed_data(doc: Document, data: dict):
     """将解析结果应用到文档模型"""
     meta = data.get("metadata", {})
 
-    doc.full_text = data.get("text", "")
+    # 🔧 关键修复：兼容 "full_text" 和 "text" 两种 key
+    doc.full_text = data.get("full_text") or data.get("text") or ""
     doc.text_length = len(doc.full_text)
     doc.page_count = data.get("page_count", 0)
     doc.fonts_used = data.get("fonts", [])
     doc.format_info = data.get("format_info", {})
 
+    # 元数据映射（兼容不同解析器的 key 命名）
     doc.meta_author = meta.get("author", "")
     doc.meta_company = meta.get("company", "")
     doc.meta_last_modified_by = meta.get("last_modified_by", "")
     doc.meta_producer = meta.get("producer", "")
-    doc.meta_creator = meta.get("creator", "")
-    doc.meta_software_version = meta.get("software_version", "")
+    doc.meta_creator = meta.get("creator") or meta.get("application", "")
+    doc.meta_software_version = meta.get("software_version") or meta.get("app_version", "")
 
-    # Parse timestamps
-    for field, key in [("meta_created_time", "created_time"), ("meta_modified_time", "modified_time")]:
-        ts = meta.get(key)
+    # Parse timestamps（兼容多种 key 命名）
+    for field, keys in [
+        ("meta_created_time", ["created_time", "created_date"]),
+        ("meta_modified_time", ["modified_time", "modified_date"]),
+    ]:
+        ts = None
+        for key in keys:
+            ts = meta.get(key)
+            if ts:
+                break
         if ts:
             try:
-                if isinstance(ts, str):
-                    setattr(doc, field, datetime.fromisoformat(ts))
-                else:
+                if isinstance(ts, str) and ts.strip():
+                    # 处理 PDF 格式的日期 D:20240101120000+08'00'
+                    if ts.startswith("D:"):
+                        ts_clean = ts[2:16].ljust(14, '0')
+                        setattr(doc, field, datetime.strptime(ts_clean, "%Y%m%d%H%M%S"))
+                    else:
+                        setattr(doc, field, datetime.fromisoformat(ts.replace("Z", "+00:00")))
+                elif hasattr(ts, 'year'):  # already a datetime
                     setattr(doc, field, ts)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"时间解析失败 ({field}={ts}): {e}")
 
     doc.meta_extra = {k: v for k, v in meta.items()
                       if k not in ["author", "company", "last_modified_by", "producer",
-                                   "creator", "software_version", "created_time", "modified_time"]}
+                                   "creator", "software_version", "created_time", "modified_time",
+                                   "created_date", "modified_date", "application", "app_version"]}
