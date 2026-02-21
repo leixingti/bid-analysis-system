@@ -297,6 +297,10 @@ if (typeof Recharts === 'undefined') {
   .diff-empty {
     padding: 20px; text-align: center; font-size: 12px; color: var(--text-dim);
   }
+  .detail-chip {
+    padding: 6px 14px; background: var(--bg); border-radius: 8px;
+    border: 1px solid var(--border); font-size: 12px;
+  }
 
   /* Loading */
   .spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 40px auto; }
@@ -628,12 +632,85 @@ function ProjectsPage({ onNavigate }) {
   );
 }
 
-// === Alert Item with Expandable Diff ===
+// === Alert Item with Expandable Details (all types) ===
 function AlertItemWithDiff({ result: r }) {
   const [expanded, setExpanded] = useState(false);
-  const segments = r.details?.similar_segments || [];
-  const isContentSim = r.analysis_type === 'content_similarity';
-  const hasDetails = isContentSim && r.details;
+  const details = r.details || {};
+  const hasDetails = details && Object.keys(details).length > 0;
+
+  function renderDetails() {
+    const type = r.analysis_type;
+    if (type === 'content_similarity') {
+      const segments = details.similar_segments || [];
+      return React.createElement('div', null,
+        React.createElement('div', { style: { display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 } },
+          [['SimHash', details.simhash_similarity],['TF-IDF余弦', details.cosine_similarity],['Jaccard', details.jaccard_similarity]].map(([label, val]) => val != null ? React.createElement('div', { key: label, className: 'detail-chip' }, React.createElement('span', { style: { color: 'var(--text-muted)' } }, label+': '), React.createElement('span', { style: { fontWeight: 700 } }, (val*100).toFixed(1)+'%')) : null),
+          details.tokenizer && React.createElement('div', { key: 'tok', className: 'detail-chip' }, React.createElement('span', { style: { color: 'var(--text-muted)' } }, '分词: '), React.createElement('span', { style: { fontWeight: 500 } }, details.tokenizer))
+        ),
+        segments.length > 0 ? React.createElement(SimilarSegmentsDiff, { segments, companyA: r.company_a, companyB: r.company_b }) : React.createElement('div', { className: 'diff-empty' }, '未检测到高相似度段落')
+      );
+    }
+    if (type === 'metadata_match' || type === 'format_match') {
+      const alerts = details.alerts || [];
+      if (!alerts.length) return React.createElement('div', { className: 'diff-empty' }, '无详细数据');
+      return React.createElement('div', { className: 'diff-panel' },
+        React.createElement('div', { className: 'diff-header', style: { gridTemplateColumns: '2fr 3fr 3fr 4fr' } },
+          React.createElement('div', { className: 'diff-header-cell' }, '检测项'),
+          React.createElement('div', { className: 'diff-header-cell' }, '文档A'),
+          React.createElement('div', { className: 'diff-header-cell' }, '文档B'),
+          React.createElement('div', { className: 'diff-header-cell' }, '说明')
+        ),
+        alerts.map((a, i) => React.createElement('div', { className: 'diff-row', key: i, style: { gridTemplateColumns: '2fr 3fr 3fr 4fr' } },
+          React.createElement('div', { className: 'diff-cell', style: { fontWeight: 500 } }, a.field || a.type || '-'),
+          React.createElement('div', { className: 'diff-cell' }, a.value_a != null ? String(a.value_a) : '-'),
+          React.createElement('div', { className: 'diff-cell' }, a.value_b != null ? String(a.value_b) : '-'),
+          React.createElement('div', { className: 'diff-cell', style: { color: 'var(--text-muted)' } }, a.description || a.message || '')
+        ))
+      );
+    }
+    if (type === 'timestamp_cluster') {
+      const clusters = details.clusters || [];
+      return React.createElement('div', { className: 'diff-panel' },
+        React.createElement('div', { className: 'diff-header', style: { gridTemplateColumns: '1fr' } },
+          React.createElement('div', { className: 'diff-header-cell' }, '时间聚集详情 (聚集组: '+(details.cluster_count||0)+', 窗口: '+(details.threshold_minutes||5)+'分钟)')
+        ),
+        React.createElement('div', { className: 'diff-row', style: { gridTemplateColumns: '1fr' } },
+          React.createElement('div', { className: 'diff-cell', style: { color: 'var(--text-muted)' } }, '所有文档的创建/修改时间集中在短时间窗口内，可能为同一人或同一台电脑制作')
+        )
+      );
+    }
+    if (type === 'entity_cross') {
+      const hits = details.hits || [];
+      if (!hits.length) return React.createElement('div', { className: 'diff-empty' }, '无详细数据');
+      return React.createElement('div', { className: 'diff-panel' },
+        React.createElement('div', { className: 'diff-header', style: { gridTemplateColumns: '2fr 3fr 5fr' } },
+          React.createElement('div', { className: 'diff-header-cell' }, '实体类型'),
+          React.createElement('div', { className: 'diff-header-cell' }, '泄露值'),
+          React.createElement('div', { className: 'diff-header-cell' }, '说明')
+        ),
+        hits.map((h, i) => React.createElement('div', { className: 'diff-row', key: i, style: { gridTemplateColumns: '2fr 3fr 5fr' } },
+          React.createElement('div', { className: 'diff-cell', style: { fontWeight: 500 } }, h.type || h.entity_type || '-'),
+          React.createElement('div', { className: 'diff-cell', style: { fontFamily: 'monospace', color: 'var(--critical)' } }, h.value || '-'),
+          React.createElement('div', { className: 'diff-cell', style: { color: 'var(--text-muted)' } }, h.description || h.context || '')
+        ))
+      );
+    }
+    if (type === 'error_pattern') {
+      const items = [...(details.common_errors||[]).map(e=>({cat:'共性错误',val:e})),...(details.common_standards||[]).map(e=>({cat:'过期标准',val:e})),...(details.common_patterns||[]).map(e=>({cat:'共性模式',val:typeof e==='string'?e:JSON.stringify(e)}))];
+      if (!items.length) return React.createElement('div', { className: 'diff-empty' }, '错误模式类型: '+(details.type||'-'));
+      return React.createElement('div', { className: 'diff-panel' },
+        React.createElement('div', { className: 'diff-header', style: { gridTemplateColumns: '2fr 5fr' } },
+          React.createElement('div', { className: 'diff-header-cell' }, '类别'),
+          React.createElement('div', { className: 'diff-header-cell' }, '内容')
+        ),
+        items.map((it,i)=>React.createElement('div',{className:'diff-row',key:i,style:{gridTemplateColumns:'2fr 5fr'}},React.createElement('div',{className:'diff-cell',style:{fontWeight:500}},it.cat),React.createElement('div',{className:'diff-cell'},it.val)))
+      );
+    }
+    if (type === 'price_analysis') {
+      return React.createElement('div', { className: 'diff-empty' }, '报价分析类型: '+(details.alert_type||'-'));
+    }
+    return React.createElement('div', { style: { marginTop: 8, padding: 12, background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)', fontSize: 11, fontFamily: 'monospace', whiteSpace: 'pre-wrap', maxHeight: 200, overflow: 'auto', color: 'var(--text-muted)' } }, JSON.stringify(details, null, 2));
+  }
 
   return (
     <div className={`alert-item alert-${r.risk_level}`}>
@@ -651,47 +728,10 @@ function AlertItemWithDiff({ result: r }) {
         {hasDetails && (
           <span className="diff-toggle" onClick={() => setExpanded(!expanded)}>
             {expanded ? '▼ 收起详情' : '▶ 查看详情'}
-            {segments.length > 0 ? ` (${segments.length} 处相似)` : ''}
           </span>
         )}
       </div>
-      {expanded && hasDetails && (
-        <div style={{ marginTop: 12 }}>
-          {/* 分项得分 */}
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: segments.length > 0 ? 12 : 0 }}>
-            {r.details.simhash_similarity != null && (
-              <div style={{ padding: '6px 14px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }}>
-                <span style={{ color: 'var(--text-muted)' }}>SimHash: </span>
-                <span style={{ fontWeight: 700 }}>{(r.details.simhash_similarity * 100).toFixed(1)}%</span>
-              </div>
-            )}
-            {r.details.cosine_similarity != null && (
-              <div style={{ padding: '6px 14px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }}>
-                <span style={{ color: 'var(--text-muted)' }}>TF-IDF余弦: </span>
-                <span style={{ fontWeight: 700 }}>{(r.details.cosine_similarity * 100).toFixed(1)}%</span>
-              </div>
-            )}
-            {r.details.jaccard_similarity != null && (
-              <div style={{ padding: '6px 14px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }}>
-                <span style={{ color: 'var(--text-muted)' }}>Jaccard: </span>
-                <span style={{ fontWeight: 700 }}>{(r.details.jaccard_similarity * 100).toFixed(1)}%</span>
-              </div>
-            )}
-            {r.details.tokenizer && (
-              <div style={{ padding: '6px 14px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }}>
-                <span style={{ color: 'var(--text-muted)' }}>分词: </span>
-                <span style={{ fontWeight: 500 }}>{r.details.tokenizer}</span>
-              </div>
-            )}
-          </div>
-          {/* 相似段落对比 */}
-          {segments.length > 0 ? (
-            <SimilarSegmentsDiff segments={segments} companyA={r.company_a} companyB={r.company_b} />
-          ) : (
-            <div className="diff-empty">未检测到高相似度段落（句子级相似度均低于阈值）</div>
-          )}
-        </div>
-      )}
+      {expanded && hasDetails && <div style={{ marginTop: 12 }}>{renderDetails()}</div>}
     </div>
   );
 }
@@ -1095,7 +1135,7 @@ function App() {
             <span>{user?.username || '用户'}</span>
             <span style={{ color: 'var(--accent)', cursor: 'pointer' }} onClick={handleLogout}>退出</span>
           </div>
-          <div style={{ marginTop: 6 }}>v2.1 · Phase 2 · AI 智能检测</div>
+          <div style={{ marginTop: 6 }}>v2.2 · Phase 2 · AI 智能检测</div>
         </div>
       </aside>
 
