@@ -202,7 +202,7 @@ class PDFReportGenerator:
                 if v is not None:
                     subs.append([label, f"{v:.1%}" if isinstance(v, (int,float)) else str(v)])
             if subs:
-                st = Table(subs, colWidths=[4*cm, 4*cm])
+                st = Table(subs, colWidths=[4*cm, 6*cm])
                 st.setStyle(TableStyle([("FONTNAME",(0,0),(-1,-1),FONT_NAME),("FONTSIZE",(0,0),(-1,-1),9),
                     ("FONTNAME",(0,0),(0,-1),FONT_NAME_BOLD),("GRID",(0,0),(-1,-1),0.5,GRID_COLOR),
                     ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3)]))
@@ -231,10 +231,13 @@ class PDFReportGenerator:
             if alerts:
                 data = [["检测项", "文档A", "文档B", "说明"]]
                 for a in alerts:
-                    data.append([_safe(a.get("field") or a.get("type")),
-                                 str(_safe(a.get("value_a"),"-")), str(_safe(a.get("value_b"),"-")),
-                                 _safe(a.get("description") or a.get("message"))])
-                t = Table(data, colWidths=[3*cm, 4*cm, 4*cm, 5.3*cm])
+                    data.append([
+                        Paragraph(_safe(a.get("field") or a.get("type")), styles["cell"]),
+                        Paragraph(str(_safe(a.get("value_a"),"-")), styles["cell"]),
+                        Paragraph(str(_safe(a.get("value_b"),"-")), styles["cell"]),
+                        Paragraph(_safe(a.get("description") or a.get("message")), styles["cell"]),
+                    ])
+                t = Table(data, colWidths=[3.5*cm, 4.5*cm, 4.5*cm, 3.8*cm])
                 t.setStyle(TableStyle(base_style + [("ALIGN",(0,0),(0,-1),"LEFT")]))
                 elements.append(t)
 
@@ -252,9 +255,11 @@ class PDFReportGenerator:
             if hits:
                 data = [["实体类型", "泄露值", "说明"]]
                 for h in hits:
-                    data.append([_safe(h.get("type") or h.get("entity_type")),
-                                 _safe(h.get("value") or h.get("entity")),
-                                 _safe(h.get("description") or h.get("context"))])
+                    data.append([
+                        Paragraph(_safe(h.get("type") or h.get("entity_type")), styles["cell"]),
+                        Paragraph(_safe(h.get("value") or h.get("entity")), styles["cell"]),
+                        Paragraph(_safe(h.get("description") or h.get("context")), styles["cell"]),
+                    ])
                 t = Table(data, colWidths=[3*cm, 5*cm, 8.3*cm])
                 t.setStyle(TableStyle(base_style))
                 elements.append(t)
@@ -270,7 +275,9 @@ class PDFReportGenerator:
             if details.get("type"):
                 items.insert(0, ["错误类型", details["type"]])
             if items:
-                data = [["类别", "内容"]] + items
+                data = [["类别", "内容"]]
+                for cat, content in items:
+                    data.append([cat, Paragraph(content, styles["cell"])])
                 t = Table(data, colWidths=[3*cm, 13.3*cm])
                 t.setStyle(TableStyle(base_style))
                 elements.append(t)
@@ -284,7 +291,10 @@ class PDFReportGenerator:
                 if sub and sub.get("detected"):
                     rows.append([label, str(sub)[:200]])
             if rows:
-                t = Table(rows, colWidths=[3*cm, 13.3*cm])
+                data = []
+                for label, val in rows:
+                    data.append([label, Paragraph(str(val), styles["cell"])])
+                t = Table(data, colWidths=[3*cm, 13.3*cm])
                 t.setStyle(TableStyle([("FONTNAME",(0,0),(-1,-1),FONT_NAME),("FONTSIZE",(0,0),(-1,-1),9),
                     ("FONTNAME",(0,0),(0,-1),FONT_NAME_BOLD),("GRID",(0,0),(-1,-1),0.5,GRID_COLOR),
                     ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]))
