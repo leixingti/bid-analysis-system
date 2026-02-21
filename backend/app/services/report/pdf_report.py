@@ -122,11 +122,15 @@ class PDFReportGenerator:
             res_data = [["序号", "检测类型", "单位A", "单位B", "得分", "风险", "说明"]]
             for idx, r in enumerate(sorted_results[:30], 1):
                 sm = _safe(r.get("summary"))
-                if len(sm) > 40: sm = sm[:40] + "..."
+                if len(sm) > 35: sm = sm[:35] + "..."
+                ca_short = _safe(r.get("company_a"))
+                if len(ca_short) > 8: ca_short = ca_short[:8] + ".."
+                cb_short = _safe(r.get("company_b"))
+                if len(cb_short) > 8: cb_short = cb_short[:8] + ".."
                 res_data.append([str(idx), TYPE_NAMES.get(r.get("analysis_type",""),""),
-                    _safe(r.get("company_a"))[:10], _safe(r.get("company_b"))[:10],
+                    ca_short, cb_short,
                     f"{(r.get('score') or 0):.0%}", RISK_NAMES.get(r.get("risk_level") or "low",""), sm])
-            rt = Table(res_data, colWidths=[1*cm, 2.5*cm, 2.5*cm, 2.5*cm, 1.5*cm, 1.5*cm, 5.5*cm])
+            rt = Table(res_data, colWidths=[0.8*cm, 2.2*cm, 2.2*cm, 2.2*cm, 1.2*cm, 1.2*cm, 6.5*cm])
             rt.setStyle(TableStyle([("FONTNAME",(0,0),(-1,-1),FONT_NAME),("FONTSIZE",(0,0),(-1,-1),8),
                 ("FONTNAME",(0,0),(-1,0),FONT_NAME_BOLD),("BACKGROUND",(0,0),(-1,0),DARK_BLUE),
                 ("TEXTCOLOR",(0,0),(-1,0),colors.white),("ALIGN",(0,0),(5,-1),"CENTER"),
@@ -190,7 +194,8 @@ class PDFReportGenerator:
         base_style = [("FONTNAME",(0,0),(-1,-1),FONT_NAME),("FONTSIZE",(0,0),(-1,-1),8),
                       ("FONTNAME",(0,0),(-1,0),FONT_NAME_BOLD),("BACKGROUND",(0,0),(-1,0),MID_BLUE),
                       ("TEXTCOLOR",(0,0),(-1,0),colors.white),("GRID",(0,0),(-1,-1),0.5,GRID_COLOR),
-                      ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
+                      ("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),
+                      ("LEFTPADDING",(0,0),(-1,-1),6),("RIGHTPADDING",(0,0),(-1,-1),6),
                       ("VALIGN",(0,0),(-1,-1),"TOP")]
 
         if atype == "content_similarity":
@@ -237,7 +242,7 @@ class PDFReportGenerator:
                         Paragraph(str(_safe(a.get("value_b"),"-")), styles["cell"]),
                         Paragraph(_safe(a.get("description") or a.get("message")), styles["cell"]),
                     ])
-                t = Table(data, colWidths=[3.5*cm, 4.5*cm, 4.5*cm, 3.8*cm])
+                t = Table(data, colWidths=[4*cm, 4.2*cm, 4.2*cm, 4*cm])
                 t.setStyle(TableStyle(base_style + [("ALIGN",(0,0),(0,-1),"LEFT")]))
                 elements.append(t)
 
@@ -320,6 +325,6 @@ class PDFReportGenerator:
                 textColor=MID_BLUE, spaceBefore=8, spaceAfter=4),
             "body": ParagraphStyle("b", parent=styles["Normal"], fontName=FONT_NAME, fontSize=10,
                 textColor=colors.HexColor("#333333"), leading=16, spaceAfter=4),
-            "cell": ParagraphStyle("c", parent=styles["Normal"], fontName=FONT_NAME, fontSize=7,
-                textColor=colors.HexColor("#333333"), leading=11, spaceAfter=0),
+            "cell": ParagraphStyle("c", parent=styles["Normal"], fontName=FONT_NAME, fontSize=8,
+                textColor=colors.HexColor("#333333"), leading=12, spaceAfter=0, wordWrap='CJK'),
         }
