@@ -10,7 +10,7 @@ from reportlab.lib.units import mm, cm
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    PageBreak, HRFlowable
+    PageBreak, HRFlowable, KeepTogether
 )
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -149,7 +149,7 @@ class PDFReportGenerator:
         story.append(dim_table)
         story.append(Spacer(1, 8 * mm))
 
-        # === Section 3: Detailed Results ===
+        # === Section 3: Detailed Results (with sub-scores) ===
         story.append(Paragraph("三、检测结果明细", styles["h1"]))
         story.append(Spacer(1, 3 * mm))
 
@@ -158,17 +158,17 @@ class PDFReportGenerator:
         if sorted_results:
             res_header = ["序号", "检测类型", "单位A", "单位B", "得分", "风险", "说明"]
             res_data = [res_header]
-            for idx, r in enumerate(sorted_results[:30], 1):  # Top 30
-                risk = r.get("risk_level", "low")
-                summary_text = r.get("summary", "")
+            for idx, r in enumerate(sorted_results[:30], 1):
+                risk = r.get("risk_level") or "low"
+                summary_text = r.get("summary") or ""
                 if len(summary_text) > 40:
                     summary_text = summary_text[:40] + "..."
                 res_data.append([
                     str(idx),
                     TYPE_NAMES.get(r.get("analysis_type", ""), ""),
-                    r.get("company_a", "")[:10],
-                    r.get("company_b", "")[:10],
-                    f"{r.get('score', 0):.0%}",
+                    (r.get("company_a") or "")[:10],
+                    (r.get("company_b") or "")[:10],
+                    f"{(r.get('score') or 0):.0%}",
                     RISK_NAMES.get(risk, risk),
                     summary_text,
                 ])
@@ -188,13 +188,115 @@ class PDFReportGenerator:
             ]
             res_table.setStyle(TableStyle(res_style))
             story.append(res_table)
+
+            # === Sub-scores for content_similarity ===
+            sim_results = [r for r in sorted_results if r.get("analysis_type") == "content_similarity"]
+            if sim_results:
+                story.append(Spacer(1, 6 * mm))
+                story.append(Paragraph("文本相似度分项得分：", styles["h2"]))
+                story.append(Spacer(1, 2 * mm))
+
+                sub_header = ["涉及单位", "综合得分", "SimHash", "TF-IDF余弦", "Jaccard", "分词引擎"]
+                sub_data = [sub_header]
+                for r in sim_results:
+                    d = r.get("details") or {}
+                    pair = f"{r.get('company_a') or '文档A'} vs {r.get('company_b') or '文档B'}"
+                    sub_data.append([
+                        pair[:20],
+                        f"{(r.get('score') or 0):.1%}",
+                        f"{d.get('simhash_similarity', 0):.1%}",
+                        f"{d.get('cosine_similarity', 0):.1%}",
+                        f"{d.get('jaccard_similarity', 0):.1%}",
+                        d.get("tokenizer", "-"),
+                    ])
+
+                sub_table = Table(sub_data, colWidths=[4 * cm, 2.2 * cm, 2.2 * cm, 2.5 * cm, 2.2 * cm, 2.2 * cm])
+                sub_style = [
+                    ("FONTNAME", (0, 0), (-1, -1), FONT_NAME),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                    ("FONTNAME", (0, 0), (-1, 0), FONT_NAME_BOLD),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2E75B6")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#D9D9D9")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+                sub_table.setStyle(TableStyle(sub_style))
+                story.append(sub_table)
         else:
             story.append(Paragraph("暂无检测结果", styles["body"]))
 
         story.append(Spacer(1, 8 * mm))
 
-        # === Section 4: Conclusion ===
-        story.append(Paragraph("四、分析结论", styles["h1"]))
+        # === Section 4: Similar Segments Detail ===
+        story.append(Paragraph("四、相似段落对比详情", styles["h1"]))
+        story.append(Spacer(1, 3 * mm))
+
+        has_segments = False
+        for r in sorted_results:
+            if r.get("analysis_type") != "content_similarity":
+                continue
+            details = r.get("details") or {}
+            segments = details.get("similar_segments", [])
+            if not segments:
+                continue
+
+            has_segments = True
+            company_a = r.get("company_a") or "文档A"
+            company_b = r.get("company_b") or "文档B"
+
+            story.append(Paragraph(
+                f"{company_a}  vs  {company_b}（综合相似度 {(r.get('score') or 0):.1%}）",
+                styles["h2"]
+            ))
+            story.append(Spacer(1, 2 * mm))
+
+            seg_header = ["#", "相似度", f"{company_a}段落", f"{company_b}段落"]
+            seg_data = [seg_header]
+            for i, seg in enumerate(segments[:15], 1):
+                text_a = seg.get("text_a_segment", "")[:120]
+                text_b = seg.get("text_b_segment", "")[:120]
+                sim = seg.get("similarity", 0)
+
+                seg_data.append([
+                    str(i),
+                    f"{sim:.0%}",
+                    Paragraph(text_a, styles["cell"]),
+                    Paragraph(text_b, styles["cell"]),
+                ])
+
+            seg_table = Table(seg_data, colWidths=[0.8 * cm, 1.5 * cm, 7 * cm, 7 * cm])
+            seg_style = [
+                ("FONTNAME", (0, 0), (-1, -1), FONT_NAME),
+                ("FONTSIZE", (0, 0), (-1, -1), 7),
+                ("FONTNAME", (0, 0), (-1, 0), FONT_NAME_BOLD),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E79")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("ALIGN", (0, 0), (1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#D9D9D9")),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (2, 1), (3, -1), 6),
+                ("RIGHTPADDING", (2, 1), (3, -1), 6),
+            ]
+            # Highlight high similarity rows
+            for i, seg in enumerate(segments[:15], 1):
+                if seg.get("similarity", 0) >= 0.6:
+                    seg_style.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#FFF2CC")))
+
+            seg_table.setStyle(TableStyle(seg_style))
+            story.append(seg_table)
+            story.append(Spacer(1, 6 * mm))
+
+        if not has_segments:
+            story.append(Paragraph("未检测到高相似度段落", styles["body"]))
+
+        story.append(Spacer(1, 8 * mm))
+
+        # === Section 5: Conclusion ===
+        story.append(Paragraph("五、分析结论", styles["h1"]))
         story.append(Spacer(1, 3 * mm))
 
         alert_count = len(results)
@@ -249,11 +351,22 @@ class PDFReportGenerator:
                 textColor=colors.HexColor("#1F4E79"), spaceBefore=12, spaceAfter=6,
                 borderWidth=0, borderColor=colors.HexColor("#1F4E79"),
             ),
+            "h2": ParagraphStyle(
+                "custom_h2", parent=styles["Heading2"],
+                fontName=FONT_NAME_BOLD, fontSize=11,
+                textColor=colors.HexColor("#2E75B6"), spaceBefore=8, spaceAfter=4,
+            ),
             "body": ParagraphStyle(
                 "custom_body", parent=styles["Normal"],
                 fontName=FONT_NAME, fontSize=10,
                 textColor=colors.HexColor("#333333"),
                 leading=16, spaceAfter=4,
+            ),
+            "cell": ParagraphStyle(
+                "custom_cell", parent=styles["Normal"],
+                fontName=FONT_NAME, fontSize=7,
+                textColor=colors.HexColor("#333333"),
+                leading=11, spaceAfter=0,
             ),
         }
         return custom

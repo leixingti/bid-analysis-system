@@ -5,7 +5,6 @@ from typing import List, Dict, Any
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-from openpyxl.chart import BarChart, PieChart, Reference
 
 
 # === Style Presets ===
@@ -14,6 +13,7 @@ HEADER_FILL = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="s
 TITLE_FONT = Font(name="微软雅黑", size=16, bold=True, color="1F4E79")
 SUBTITLE_FONT = Font(name="微软雅黑", size=11, bold=True, color="333333")
 BODY_FONT = Font(name="微软雅黑", size=10, color="333333")
+DETAIL_FONT = Font(name="微软雅黑", size=9, color="555555")
 THIN_BORDER = Border(
     left=Side(style="thin", color="D9D9D9"),
     right=Side(style="thin", color="D9D9D9"),
@@ -22,6 +22,7 @@ THIN_BORDER = Border(
 )
 CENTER = Alignment(horizontal="center", vertical="center", wrap_text=True)
 LEFT = Alignment(horizontal="left", vertical="center", wrap_text=True)
+WRAP_LEFT = Alignment(horizontal="left", vertical="top", wrap_text=True)
 
 RISK_COLORS = {
     "critical": PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid"),
@@ -30,6 +31,18 @@ RISK_COLORS = {
     "low": PatternFill(start_color="00B050", end_color="00B050", fill_type="solid"),
 }
 RISK_NAMES = {"critical": "严重", "high": "高风险", "medium": "中等", "low": "低风险"}
+
+TYPE_NAMES = {
+    "content_similarity": "文本相似度",
+    "metadata_match": "元数据关联",
+    "format_match": "格式指纹",
+    "timestamp_cluster": "时间戳聚集",
+    "entity_cross": "实体交叉",
+    "error_pattern": "错误模式",
+    "price_analysis": "报价分析",
+}
+
+HIGHLIGHT_FILL = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
 
 
 class ExcelReportGenerator:
@@ -44,9 +57,11 @@ class ExcelReportGenerator:
         ExcelReportGenerator._build_overview_sheet(wb, project, risk_summary)
         # Sheet 2: 文档清单
         ExcelReportGenerator._build_documents_sheet(wb, documents)
-        # Sheet 3: 检测结果明细
+        # Sheet 3: 检测结果明细（含分项得分）
         ExcelReportGenerator._build_results_sheet(wb, results)
-        # Sheet 4: 风险预警汇总
+        # Sheet 4: 相似段落对比
+        ExcelReportGenerator._build_segments_sheet(wb, results)
+        # Sheet 5: 风险预警汇总
         ExcelReportGenerator._build_alerts_sheet(wb, results)
 
         # Remove default sheet if extra
@@ -64,7 +79,7 @@ class ExcelReportGenerator:
 
         # Title
         ws.merge_cells("A1:F1")
-        ws["A1"] = "🔍 串标围标分析报告"
+        ws["A1"] = "串标围标分析报告"
         ws["A1"].font = TITLE_FONT
         ws["A1"].alignment = CENTER
         ws.row_dimensions[1].height = 40
@@ -86,7 +101,7 @@ class ExcelReportGenerator:
 
         row = 4
         ws.merge_cells(f"A{row}:F{row}")
-        ws[f"A{row}"] = "📋 项目基本信息"
+        ws[f"A{row}"] = "项目基本信息"
         ws[f"A{row}"].font = SUBTITLE_FONT
         row += 1
 
@@ -105,19 +120,9 @@ class ExcelReportGenerator:
         # Dimension Scores
         row += 1
         ws.merge_cells(f"A{row}:F{row}")
-        ws[f"A{row}"] = "📊 各维度检测得分"
+        ws[f"A{row}"] = "各维度检测得分"
         ws[f"A{row}"].font = SUBTITLE_FONT
         row += 1
-
-        dim_names = {
-            "content_similarity": "文本相似度",
-            "metadata_match": "元数据关联",
-            "format_match": "格式指纹",
-            "timestamp_cluster": "时间戳聚集",
-            "entity_cross": "实体交叉",
-            "error_pattern": "错误模式",
-            "price_analysis": "报价分析",
-        }
 
         dimension_scores = risk_summary.get("dimension_scores", {})
         headers = ["检测维度", "得分", "风险等级"]
@@ -130,7 +135,7 @@ class ExcelReportGenerator:
             cell.border = THIN_BORDER
         row += 1
 
-        for dim_key, dim_name in dim_names.items():
+        for dim_key, dim_name in TYPE_NAMES.items():
             score = dimension_scores.get(dim_key, 0.0)
             risk = "critical" if score >= 0.7 else "high" if score >= 0.5 else "medium" if score >= 0.3 else "low"
             ws.cell(row=row, column=1, value=dim_name).font = BODY_FONT
@@ -195,17 +200,9 @@ class ExcelReportGenerator:
     def _build_results_sheet(wb: Workbook, results: List[Dict]):
         ws = wb.create_sheet("检测结果明细")
 
-        TYPE_NAMES = {
-            "content_similarity": "文本相似度",
-            "metadata_match": "元数据关联",
-            "format_match": "格式指纹",
-            "timestamp_cluster": "时间戳聚集",
-            "entity_cross": "实体交叉",
-            "error_pattern": "错误模式",
-            "price_analysis": "报价分析",
-        }
-
-        headers = ["序号", "检测类型", "涉及单位A", "涉及单位B", "得分", "风险等级", "说明"]
+        # 扩展表头：加入分项得分
+        headers = ["序号", "检测类型", "涉及单位A", "涉及单位B", "综合得分", "风险等级",
+                   "SimHash", "TF-IDF余弦", "Jaccard", "说明"]
         for i, h in enumerate(headers, 1):
             cell = ws.cell(row=1, column=i)
             cell.value = h
@@ -216,20 +213,25 @@ class ExcelReportGenerator:
 
         for idx, r in enumerate(sorted(results, key=lambda x: x.get("score", 0), reverse=True), 1):
             row = idx + 1
-            risk = r.get("risk_level", "low")
+            risk = r.get("risk_level") or "low"
+            details = r.get("details") or {}
+
             values = [
                 idx,
                 TYPE_NAMES.get(r.get("analysis_type", ""), r.get("analysis_type", "")),
-                r.get("company_a", ""),
-                r.get("company_b", ""),
+                r.get("company_a") or "",
+                r.get("company_b") or "",
                 f"{(r.get('score') or 0):.1%}",
                 RISK_NAMES.get(risk, risk),
-                r.get("summary", ""),
+                f"{details.get('simhash_similarity', 0):.1%}" if r.get("analysis_type") == "content_similarity" else "-",
+                f"{details.get('cosine_similarity', 0):.1%}" if r.get("analysis_type") == "content_similarity" else "-",
+                f"{details.get('jaccard_similarity', 0):.1%}" if r.get("analysis_type") == "content_similarity" else "-",
+                r.get("summary") or "",
             ]
             for col, val in enumerate(values, 1):
                 cell = ws.cell(row=row, column=col, value=val)
                 cell.font = BODY_FONT
-                cell.alignment = LEFT if col == 7 else CENTER
+                cell.alignment = LEFT if col == 10 else CENTER
                 cell.border = THIN_BORDER
                 if col == 6:
                     cell.fill = RISK_COLORS.get(risk, PatternFill())
@@ -242,7 +244,103 @@ class ExcelReportGenerator:
         ws.column_dimensions["D"].width = 18
         ws.column_dimensions["E"].width = 10
         ws.column_dimensions["F"].width = 10
-        ws.column_dimensions["G"].width = 50
+        ws.column_dimensions["G"].width = 10
+        ws.column_dimensions["H"].width = 12
+        ws.column_dimensions["I"].width = 10
+        ws.column_dimensions["J"].width = 50
+
+    @staticmethod
+    def _build_segments_sheet(wb: Workbook, results: List[Dict]):
+        """新增 Sheet：相似段落对比详情"""
+        ws = wb.create_sheet("相似段落对比")
+
+        # Title
+        ws.merge_cells("A1:E1")
+        ws["A1"] = "文本相似度 — 相似段落对比详情"
+        ws["A1"].font = SUBTITLE_FONT
+        ws.row_dimensions[1].height = 28
+
+        headers = ["序号", "涉及单位", "相似度", "文档A段落", "文档B段落"]
+        for i, h in enumerate(headers, 1):
+            cell = ws.cell(row=3, column=i)
+            cell.value = h
+            cell.font = HEADER_FONT
+            cell.fill = HEADER_FILL
+            cell.alignment = CENTER
+            cell.border = THIN_BORDER
+
+        row = 4
+        seg_idx = 0
+        has_segments = False
+
+        for r in sorted(results, key=lambda x: x.get("score", 0), reverse=True):
+            if r.get("analysis_type") != "content_similarity":
+                continue
+            details = r.get("details") or {}
+            segments = details.get("similar_segments", [])
+            company_a = r.get("company_a") or "文档A"
+            company_b = r.get("company_b") or "文档B"
+
+            if not segments:
+                continue
+
+            has_segments = True
+
+            # 组标题行
+            ws.merge_cells(f"A{row}:E{row}")
+            ws[f"A{row}"] = f"▎{company_a}  vs  {company_b}（综合相似度 {(r.get('score') or 0):.1%}）"
+            ws[f"A{row}"].font = Font(name="微软雅黑", size=10, bold=True, color="1F4E79")
+            ws.row_dimensions[row].height = 24
+            row += 1
+
+            for seg in segments[:20]:
+                seg_idx += 1
+                text_a = seg.get("text_a_segment", "")
+                text_b = seg.get("text_b_segment", "")
+                sim = seg.get("similarity", 0)
+
+                ws.cell(row=row, column=1, value=seg_idx).font = BODY_FONT
+                ws.cell(row=row, column=1).alignment = CENTER
+                ws.cell(row=row, column=2, value=f"{company_a} vs {company_b}").font = DETAIL_FONT
+                ws.cell(row=row, column=2).alignment = CENTER
+
+                sim_cell = ws.cell(row=row, column=3, value=f"{sim:.0%}")
+                sim_cell.font = Font(name="微软雅黑", size=10, bold=True,
+                                     color="FF0000" if sim >= 0.7 else "FF6600" if sim >= 0.5 else "333333")
+                sim_cell.alignment = CENTER
+
+                cell_a = ws.cell(row=row, column=4, value=text_a)
+                cell_a.font = DETAIL_FONT
+                cell_a.alignment = WRAP_LEFT
+
+                cell_b = ws.cell(row=row, column=5, value=text_b)
+                cell_b.font = DETAIL_FONT
+                cell_b.alignment = WRAP_LEFT
+
+                # 高相似度行高亮
+                if sim >= 0.6:
+                    for c in range(1, 6):
+                        ws.cell(row=row, column=c).fill = HIGHLIGHT_FILL
+
+                for c in range(1, 6):
+                    ws.cell(row=row, column=c).border = THIN_BORDER
+
+                ws.row_dimensions[row].height = max(40, min(80, len(text_a) // 2))
+                row += 1
+
+            row += 1  # blank row between groups
+
+        if not has_segments:
+            ws.merge_cells(f"A{row}:E{row}")
+            ws[f"A{row}"] = "未检测到高相似度段落"
+            ws[f"A{row}"].font = Font(name="微软雅黑", size=10, color="999999")
+            ws[f"A{row}"].alignment = CENTER
+
+        ws.column_dimensions["A"].width = 6
+        ws.column_dimensions["B"].width = 22
+        ws.column_dimensions["C"].width = 10
+        ws.column_dimensions["D"].width = 45
+        ws.column_dimensions["E"].width = 45
 
     @staticmethod
     def _build_alerts_sheet(wb: Workbook, results: List[Dict]):
@@ -254,21 +352,11 @@ class ExcelReportGenerator:
         for r in results:
             t = r.get("analysis_type", "other")
             type_counts[t] = type_counts.get(t, 0) + 1
-            rl = r.get("risk_level", "low")
+            rl = r.get("risk_level") or "low"
             if rl in risk_counts:
                 risk_counts[rl] += 1
 
-        TYPE_NAMES = {
-            "content_similarity": "文本相似度",
-            "metadata_match": "元数据关联",
-            "format_match": "格式指纹",
-            "timestamp_cluster": "时间戳聚集",
-            "entity_cross": "实体交叉",
-            "error_pattern": "错误模式",
-            "price_analysis": "报价分析",
-        }
-
-        ws["A1"] = "📊 预警统计"
+        ws["A1"] = "预警统计"
         ws["A1"].font = SUBTITLE_FONT
         ws.merge_cells("A1:D1")
 
