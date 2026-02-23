@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Float, DateTime, Text, JSON, ForeignKey, Boolean
+from sqlalchemy import Column, String, Integer, Float, DateTime, Text, JSON, ForeignKey, Boolean, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -47,11 +47,15 @@ class Project(Base):
     status = Column(String(20), default=ProjectStatus.CREATED)
     risk_score = Column(Float, default=0.0, comment="综合风险评分 0-100")
     risk_level = Column(String(20), default=RiskLevel.LOW)
+    # 分析参数（可配置阈值）
+    analysis_config = Column(JSON, default=dict, comment="项目级分析参数")
+    created_by = Column(String, nullable=True, comment="创建人ID")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     documents = relationship("Document", back_populates="project", cascade="all, delete-orphan")
     analysis_results = relationship("AnalysisResult", back_populates="project", cascade="all, delete-orphan")
+    analysis_histories = relationship("AnalysisHistory", back_populates="project", cascade="all, delete-orphan")
 
 
 class Document(Base):
@@ -84,6 +88,7 @@ class Document(Base):
     format_info = Column(JSON, default=dict, comment="格式信息(行距、页边距等)")
 
     parsed = Column(Integer, default=0, comment="0=未解析 1=已解析 2=解析失败")
+    parse_error = Column(Text, nullable=True, comment="解析失败原因")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     project = relationship("Project", back_populates="documents")
@@ -94,6 +99,7 @@ class AnalysisResult(Base):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     project_id = Column(String, ForeignKey("projects.id"), nullable=False)
+    history_id = Column(String, ForeignKey("analysis_histories.id"), nullable=True, comment="关联的分析批次")
 
     analysis_type = Column(String(50), nullable=False)
 
@@ -110,3 +116,51 @@ class AnalysisResult(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     project = relationship("Project", back_populates="analysis_results")
+
+
+class AnalysisHistory(Base):
+    """分析历史记录 — 保留每次分析的快照"""
+    __tablename__ = "analysis_histories"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=False)
+    version = Column(Integer, default=1, comment="分析版本号")
+    status = Column(String(20), default="running", comment="running/completed/failed")
+    progress = Column(Integer, default=0, comment="进度 0-100")
+    current_step = Column(String(100), default="", comment="当前步骤描述")
+
+    risk_score = Column(Float, default=0.0)
+    risk_level = Column(String(20), default="low")
+    total_alerts = Column(Integer, default=0)
+    dimension_scores = Column(JSON, default=dict)
+
+    config_snapshot = Column(JSON, default=dict, comment="本次分析使用的参数")
+    document_count = Column(Integer, default=0)
+    error_message = Column(Text, nullable=True)
+
+    started_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+    triggered_by = Column(String, nullable=True, comment="触发人ID")
+
+    project = relationship("Project", back_populates="analysis_histories")
+
+
+class AuditLog(Base):
+    """操作审计日志"""
+    __tablename__ = "audit_logs"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, nullable=True)
+    username = Column(String(100), nullable=True)
+    action = Column(String(50), nullable=False, comment="login/upload/analyze/export/delete等")
+    resource_type = Column(String(50), nullable=True, comment="project/document/report等")
+    resource_id = Column(String, nullable=True)
+    details = Column(JSON, default=dict, comment="操作详情")
+    ip_address = Column(String(50), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    __table_args__ = (
+        Index("idx_audit_user", "user_id"),
+        Index("idx_audit_action", "action"),
+        Index("idx_audit_created", "created_at"),
+    )

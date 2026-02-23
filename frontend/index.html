@@ -312,6 +312,49 @@ if (typeof Recharts === 'undefined') {
   .empty-text { font-size: 15px; }
   .empty-sub { font-size: 13px; margin-top: 8px; color: var(--text-dim); }
 
+  /* Progress bar */
+  .progress-bar-wrap { width: 100%; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; margin: 8px 0; }
+  .progress-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #8b5cf6); border-radius: 4px; transition: width 0.5s ease; }
+  .progress-text { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+  /* Search bar */
+  .search-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+  .search-bar .form-input { max-width: 280px; }
+  .search-bar select.form-input { max-width: 160px; }
+
+  /* Config panel */
+  .config-panel { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px; margin-bottom: 16px; }
+  .config-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+  .config-label { font-size: 12px; color: var(--text-muted); min-width: 140px; }
+  .config-input { width: 80px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); font-size: 13px; }
+  .config-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); cursor: pointer; }
+  .config-check input { accent-color: var(--accent); }
+
+  /* History timeline */
+  .history-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-left: 2px solid var(--border); margin-left: 8px; position: relative; transition: background 0.2s; cursor: pointer; }
+  .history-item:hover { background: rgba(59,130,246,0.04); }
+  .history-item.active { border-left-color: var(--accent); background: var(--accent-glow); }
+  .history-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border); position: absolute; left: -6px; }
+  .history-item.active .history-dot { background: var(--accent); }
+
+  /* Preview modal */
+  .modal-wide { width: 700px; max-width: 95vw; }
+  .preview-text { max-height: 400px; overflow-y: auto; padding: 16px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; line-height: 1.8; white-space: pre-wrap; word-break: break-all; }
+  .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+  .meta-item { padding: 8px 12px; background: var(--bg); border-radius: 6px; border: 1px solid var(--border); }
+  .meta-key { font-size: 11px; color: var(--text-muted); text-transform: uppercase; }
+  .meta-val { font-size: 13px; margin-top: 2px; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+  .tab { padding: 10px 20px; font-size: 13px; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 500; }
+
+  /* Checkbox */
+  .check-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+  .check-row input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+
   /* Responsive */
   @media (max-width: 1024px) {
     .grid-2, .grid-3 { grid-template-columns: 1fr; }
@@ -347,14 +390,15 @@ const NAV_ITEMS = [
   { key: 'projects', icon: '📁', label: '项目管理' },
   { key: 'analysis', icon: '🔍', label: '分析详情' },
   { key: 'alerts', icon: '🚨', label: '风险预警' },
+  { key: 'auditlog', icon: '📋', label: '操作日志' },
 ];
 
-// === API Helper ===
+// === API Helper (with auth token) ===
 async function api(path, opts = {}) {
-  const res = await fetch(API + path, {
-    headers: { 'Content-Type': 'application/json', ...opts.headers },
-    ...opts,
-  });
+  const token = localStorage.getItem('token');
+  const headers = { 'Content-Type': 'application/json', ...opts.headers };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const res = await fetch(API + path, { headers, ...opts });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || `API Error ${res.status}`);
@@ -529,17 +573,23 @@ function DashboardPage({ onNavigate }) {
   );
 }
 
-// === Projects Page ===
+// === Projects Page (Enhanced: search, filter, batch delete) ===
 function ProjectsPage({ onNavigate }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: '', project_code: '', description: '' });
+  const [search, setSearch] = useState('');
+  const [filterLevel, setFilterLevel] = useState('');
+  const [selected, setSelected] = useState(new Set());
 
   const load = useCallback(() => {
     setLoading(true);
-    api('/projects/').then(d => setProjects(d.items || [])).catch(console.error).finally(() => setLoading(false));
-  }, []);
+    let q = '/projects/?limit=100';
+    if (search) q += '&search=' + encodeURIComponent(search);
+    if (filterLevel) q += '&risk_level=' + filterLevel;
+    api(q).then(d => setProjects(d.items || [])).catch(console.error).finally(() => setLoading(false));
+  }, [search, filterLevel]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -558,6 +608,23 @@ function ProjectsPage({ onNavigate }) {
     try { await api(`/projects/${id}`, { method: 'DELETE' }); load(); } catch (e) { alert(e.message); }
   };
 
+  const batchDelete = async () => {
+    if (selected.size === 0) return;
+    if (!confirm(`确定删除选中的 ${selected.size} 个项目？`)) return;
+    try {
+      await api('/projects/batch-delete', { method: 'POST', body: JSON.stringify({ project_ids: [...selected] }) });
+      setSelected(new Set());
+      load();
+    } catch (e) { alert(e.message); }
+  };
+
+  const toggleSelect = (id) => {
+    setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  };
+  const toggleAll = () => {
+    setSelected(prev => prev.size === projects.length ? new Set() : new Set(projects.map(p => p.id)));
+  };
+
   return (
     <div>
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -565,23 +632,43 @@ function ProjectsPage({ onNavigate }) {
           <div className="page-title">项目管理</div>
           <div className="page-desc">创建和管理招标项目</div>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>＋ 新建项目</button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          {selected.size > 0 && <button className="btn btn-danger" onClick={batchDelete}>🗑 删除选中 ({selected.size})</button>}
+          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>＋ 新建项目</button>
+        </div>
+      </div>
+
+      <div className="search-bar">
+        <input className="form-input" placeholder="🔍 搜索项目名称/编号..." value={search}
+          onChange={e => setSearch(e.target.value)} />
+        <select className="form-input" value={filterLevel} onChange={e => setFilterLevel(e.target.value)} style={{ cursor: 'pointer' }}>
+          <option value="">全部等级</option>
+          <option value="critical">严重</option>
+          <option value="high">高风险</option>
+          <option value="medium">中等</option>
+          <option value="low">低风险</option>
+        </select>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>共 {projects.length} 个项目</span>
       </div>
 
       {loading ? <div className="spinner" /> : projects.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon">📁</div>
-          <div className="empty-text">暂无项目</div>
+          <div className="empty-text">{search || filterLevel ? '没有匹配的项目' : '暂无项目'}</div>
           <div className="empty-sub">点击"新建项目"开始分析</div>
         </div>
       ) : (
         <div className="card">
           <div className="table-wrap">
             <table>
-              <thead><tr><th>项目名称</th><th>编号</th><th>文档数</th><th>风险评分</th><th>等级</th><th>状态</th><th>操作</th></tr></thead>
+              <thead><tr>
+                <th style={{width:36}}><input type="checkbox" onChange={toggleAll} checked={selected.size === projects.length && projects.length > 0} style={{accentColor:'var(--accent)'}} /></th>
+                <th>项目名称</th><th>编号</th><th>文档数</th><th>风险评分</th><th>等级</th><th>状态</th><th>操作</th>
+              </tr></thead>
               <tbody>
                 {projects.map(p => (
                   <tr key={p.id}>
+                    <td><input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} style={{accentColor:'var(--accent)'}} /></td>
                     <td style={{ fontWeight: 500, cursor: 'pointer' }} onClick={() => onNavigate('analysis', p.id)}>{p.name}</td>
                     <td style={{ color: 'var(--text-muted)' }}>{p.project_code || '-'}</td>
                     <td>{p.document_count}</td>
@@ -736,7 +823,7 @@ function AlertItemWithDiff({ result: r }) {
   );
 }
 
-// === Analysis Detail Page ===
+// === Analysis Detail Page (Enhanced: progress, preview, config, history) ===
 function AnalysisPage({ projectId, onNavigate }) {
   const [project, setProject] = useState(null);
   const [docs, setDocs] = useState([]);
@@ -747,22 +834,28 @@ function AnalysisPage({ projectId, onNavigate }) {
   const [uploadFiles, setUploadFiles] = useState([]);
   const [companyNames, setCompanyNames] = useState('');
   const fileInputRef = useRef(null);
+  // New states
+  const [progress, setProgress] = useState(null);
+  const [previewDoc, setPreviewDoc] = useState(null);
+  const [showConfig, setShowConfig] = useState(false);
+  const [config, setConfig] = useState({
+    similarity_threshold: 0.20, timestamp_diff_minutes: 5, sentence_similarity_threshold: 0.4,
+    enable_content_similarity: true, enable_metadata_match: true, enable_format_match: true,
+    enable_timestamp_cluster: true, enable_entity_cross: true, enable_error_pattern: true, enable_price_analysis: true,
+  });
+  const [history, setHistory] = useState([]);
+  const [activeTab, setActiveTab] = useState('results');
 
   const load = useCallback(async () => {
     if (!projectId) return;
     setLoading(true);
     try {
-      const [p, d] = await Promise.all([
-        api(`/projects/${projectId}`),
-        api(`/documents/${projectId}`),
-      ]);
+      const [p, d] = await Promise.all([api(`/projects/${projectId}`), api(`/documents/${projectId}`)]);
       setProject(p);
       setDocs(d);
-      // Try to load existing results
-      try {
-        const r = await api(`/analysis/results/${projectId}`);
-        setResults(r);
-      } catch { setResults(null); }
+      try { const r = await api(`/analysis/results/${projectId}`); setResults(r); } catch { setResults(null); }
+      try { const h = await api(`/analysis/history/${projectId}`); setHistory(h); } catch { }
+      try { const c = await api(`/analysis/config/${projectId}`); setConfig(prev => ({...prev, ...c})); } catch { }
     } catch (e) { console.error(e); }
     setLoading(false);
   }, [projectId]);
@@ -773,26 +866,62 @@ function AnalysisPage({ projectId, onNavigate }) {
     if (uploadFiles.length === 0) return;
     setUploading(true);
     try {
+      const token = localStorage.getItem('token');
       const formData = new FormData();
       uploadFiles.forEach(f => formData.append('files', f));
       if (companyNames.trim()) formData.append('company_names', companyNames.trim());
-      const res = await fetch(`${API}/documents/upload/${projectId}`, { method: 'POST', body: formData });
+      const res = await fetch(`${API}/documents/upload/${projectId}`, {
+        method: 'POST', body: formData,
+        headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+      });
       if (!res.ok) throw new Error((await res.json()).detail || 'Upload failed');
-      setUploadFiles([]);
-      setCompanyNames('');
+      setUploadFiles([]); setCompanyNames('');
       load();
     } catch (e) { alert(e.message); }
     setUploading(false);
   };
 
   const runAnalysis = async () => {
-    setAnalyzing(true);
+    setAnalyzing(true); setProgress({ progress: 0, current_step: '初始化...', status: 'running' });
     try {
-      const r = await api(`/analysis/run/${projectId}`, { method: 'POST' });
-      setResults(r);
-      load();
+      const resp = await api(`/analysis/run/${projectId}`, { method: 'POST', body: JSON.stringify(config) });
+      const historyId = resp.history_id;
+      // Poll progress
+      const poll = setInterval(async () => {
+        try {
+          const p = await api(`/analysis/progress/${historyId}`);
+          setProgress(p);
+          if (p.status === 'completed' || p.status === 'failed') {
+            clearInterval(poll);
+            setAnalyzing(false);
+            if (p.status === 'completed') load();
+            else alert('分析失败: ' + (p.error_message || '未知错误'));
+          }
+        } catch { clearInterval(poll); setAnalyzing(false); }
+      }, 1500);
+    } catch (e) { alert(e.message); setAnalyzing(false); setProgress(null); }
+  };
+
+  const openPreview = async (docId) => {
+    try {
+      const p = await api(`/documents/preview/${docId}`);
+      setPreviewDoc(p);
     } catch (e) { alert(e.message); }
-    setAnalyzing(false);
+  };
+
+  const saveConfig = async () => {
+    try {
+      await api(`/analysis/config/${projectId}`, { method: 'POST', body: JSON.stringify(config) });
+      setShowConfig(false);
+    } catch (e) { alert(e.message); }
+  };
+
+  const loadHistoryResults = async (hid) => {
+    try {
+      const r = await api(`/analysis/results/${projectId}?history_id=${hid}`);
+      setResults(r);
+      setActiveTab('results');
+    } catch (e) { alert(e.message); }
   };
 
   const handleDrop = (e) => {
@@ -800,6 +929,11 @@ function AnalysisPage({ projectId, onNavigate }) {
     e.currentTarget.classList.remove('dragover');
     const files = Array.from(e.dataTransfer.files).filter(f => /\.(pdf|docx?)$/i.test(f.name));
     setUploadFiles(prev => [...prev, ...files]);
+  };
+
+  const exportUrl = (type) => {
+    const token = localStorage.getItem('token');
+    return `${API}/report/${type}/${projectId}` + (token ? `?token=${token}` : '');
   };
 
   if (!projectId) return (
@@ -823,15 +957,64 @@ function AnalysisPage({ projectId, onNavigate }) {
           <div className="page-desc">{project.project_code || ''} · {docs.length} 份文档</div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn" onClick={() => window.open(`${API}/report/excel/${projectId}`)}>📥 Excel报告</button>
-          <button className="btn" onClick={() => window.open(`${API}/report/pdf/${projectId}`)}>📄 PDF报告</button>
+          <button className="btn btn-sm" onClick={() => setShowConfig(!showConfig)}>⚙ 参数</button>
+          <button className="btn" onClick={() => window.open(`${API}/report/excel/${projectId}`)}>📥 Excel</button>
+          <button className="btn" onClick={() => window.open(`${API}/report/pdf/${projectId}`)}>📄 PDF</button>
           <button className="btn btn-primary" onClick={runAnalysis} disabled={analyzing || docs.length < 2}>
             {analyzing ? '分析中...' : '▶ 执行分析'}
           </button>
         </div>
       </div>
 
-      {/* Risk overview if results exist */}
+      {/* Progress bar */}
+      {analyzing && progress && (
+        <div className="card" style={{ marginBottom: 16, padding: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <span style={{ fontSize: 13, fontWeight: 500 }}>🔄 {progress.current_step || '分析中...'}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>{progress.progress || 0}%</span>
+          </div>
+          <div className="progress-bar-wrap">
+            <div className="progress-bar-fill" style={{ width: (progress.progress || 0) + '%' }} />
+          </div>
+        </div>
+      )}
+
+      {/* Config panel */}
+      {showConfig && (
+        <div className="card config-panel" style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <span style={{ fontWeight: 600, fontSize: 14 }}>⚙ 分析参数配置</span>
+            <button className="btn btn-sm btn-primary" onClick={saveConfig}>保存</button>
+          </div>
+          <div className="config-row">
+            <span className="config-label">文本相似度阈值</span>
+            <input className="config-input" type="number" step="0.05" min="0" max="1" value={config.similarity_threshold}
+              onChange={e => setConfig({...config, similarity_threshold: parseFloat(e.target.value) || 0.2})} />
+            <span style={{fontSize:11,color:'var(--text-dim)'}}>({(config.similarity_threshold*100).toFixed(0)}%)</span>
+          </div>
+          <div className="config-row">
+            <span className="config-label">时间戳聚集窗口</span>
+            <input className="config-input" type="number" min="1" max="60" value={config.timestamp_diff_minutes}
+              onChange={e => setConfig({...config, timestamp_diff_minutes: parseInt(e.target.value) || 5})} />
+            <span style={{fontSize:11,color:'var(--text-dim)'}}>分钟</span>
+          </div>
+          <div className="config-row">
+            <span className="config-label">句子相似度阈值</span>
+            <input className="config-input" type="number" step="0.05" min="0.1" max="1" value={config.sentence_similarity_threshold}
+              onChange={e => setConfig({...config, sentence_similarity_threshold: parseFloat(e.target.value) || 0.4})} />
+          </div>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 8 }}>
+            {[['content_similarity','文本相似度'],['metadata_match','元数据'],['format_match','格式指纹'],['timestamp_cluster','时间戳'],['entity_cross','实体交叉'],['error_pattern','错误模式'],['price_analysis','报价分析']].map(([k,v])=>(
+              <label key={k} className="config-check">
+                <input type="checkbox" checked={config['enable_'+k]} onChange={e => setConfig({...config, ['enable_'+k]: e.target.checked})} />
+                {v}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Risk overview */}
       {results && results.total_alerts > 0 && (
         <div className="stats-grid animate-in">
           <StatCard label="风险评分" value={results.risk_score?.toFixed(1) || '0.0'} tag={RISK_NAMES[results.risk_level]} tagClass={`tag-${results.risk_level}`} />
@@ -860,57 +1043,58 @@ function AnalysisPage({ projectId, onNavigate }) {
             <div style={{ padding: '20px 0' }}>
               <RiskGauge score={results.risk_score || 0} level={results.risk_level || 'low'} />
             </div>
-            <div style={{ textAlign: 'center', marginTop: 12 }}>
-              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                Phase2检测：实体交叉 {results.analysis_summary?.phase2_summary?.entity_cross_alerts || 0} 项 · 
-                错误模式 {results.analysis_summary?.phase2_summary?.error_pattern_alerts || 0} 项 · 
-                报价异常 {results.analysis_summary?.phase2_summary?.price_alerts || 0} 项
-              </div>
-            </div>
           </div>
         </div>
       )}
 
-      {/* Upload section */}
-      <div className="card animate-in delay-2" style={{ marginBottom: 20 }}>
-        <div className="card-title">上传投标文档</div>
-        <div className="upload-zone"
-          onDrop={handleDrop}
-          onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('dragover'); }}
-          onDragLeave={e => e.currentTarget.classList.remove('dragover')}
-          onClick={() => fileInputRef.current?.click()}>
-          <div className="upload-icon">📎</div>
-          <div className="upload-text">拖放 PDF/DOCX 文件到这里，或点击选择</div>
-          <input ref={fileInputRef} type="file" multiple accept=".pdf,.docx,.doc" hidden
-            onChange={e => setUploadFiles(prev => [...prev, ...Array.from(e.target.files)])} />
-        </div>
-        {uploadFiles.length > 0 && (
-          <div style={{ marginTop: 12 }}>
-            {uploadFiles.map((f, i) => (
-              <div className="file-item" key={i}>
-                <span className="file-name">📄 {f.name} <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>({(f.size / 1024).toFixed(0)} KB)</span></span>
-                <button className="btn btn-sm btn-danger" onClick={() => setUploadFiles(prev => prev.filter((_, j) => j !== i))}>移除</button>
-              </div>
-            ))}
-            <div className="form-group" style={{ marginTop: 12 }}>
-              <label className="form-label">投标单位名称（逗号分隔，与文件顺序对应）</label>
-              <input className="form-input" placeholder="如：A建设公司, B工程公司, C装饰公司"
-                value={companyNames} onChange={e => setCompanyNames(e.target.value)} />
-            </div>
-            <button className="btn btn-primary" style={{ marginTop: 8 }} onClick={handleUpload} disabled={uploading}>
-              {uploading ? '上传中...' : `上传 ${uploadFiles.length} 个文件`}
-            </button>
-          </div>
-        )}
+      {/* Tabs */}
+      <div className="tabs">
+        <div className={`tab ${activeTab==='upload'?'active':''}`} onClick={()=>setActiveTab('upload')}>📎 上传文档</div>
+        <div className={`tab ${activeTab==='docs'?'active':''}`} onClick={()=>setActiveTab('docs')}>📄 文档列表 ({docs.length})</div>
+        <div className={`tab ${activeTab==='results'?'active':''}`} onClick={()=>setActiveTab('results')}>🔍 检测结果 ({results?.results?.length || 0})</div>
+        <div className={`tab ${activeTab==='history'?'active':''}`} onClick={()=>setActiveTab('history')}>📜 分析历史 ({history.length})</div>
       </div>
 
-      {/* Documents list */}
-      {docs.length > 0 && (
-        <div className="card animate-in delay-3" style={{ marginBottom: 20 }}>
-          <div className="card-title">已上传文档 ({docs.length})</div>
+      {/* Upload tab */}
+      {activeTab === 'upload' && (
+        <div className="card animate-in" style={{ marginBottom: 20 }}>
+          <div className="upload-zone"
+            onDrop={handleDrop}
+            onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('dragover'); }}
+            onDragLeave={e => e.currentTarget.classList.remove('dragover')}
+            onClick={() => fileInputRef.current?.click()}>
+            <div className="upload-icon">📎</div>
+            <div className="upload-text">拖放 PDF/DOCX 文件到这里，或点击选择</div>
+            <input ref={fileInputRef} type="file" multiple accept=".pdf,.docx,.doc" hidden
+              onChange={e => setUploadFiles(prev => [...prev, ...Array.from(e.target.files)])} />
+          </div>
+          {uploadFiles.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              {uploadFiles.map((f, i) => (
+                <div className="file-item" key={i}>
+                  <span className="file-name">📄 {f.name} <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>({(f.size / 1024).toFixed(0)} KB)</span></span>
+                  <button className="btn btn-sm btn-danger" onClick={() => setUploadFiles(prev => prev.filter((_, j) => j !== i))}>移除</button>
+                </div>
+              ))}
+              <div className="form-group" style={{ marginTop: 12 }}>
+                <label className="form-label">投标单位名称（逗号分隔，与文件顺序对应）</label>
+                <input className="form-input" placeholder="如：A建设公司, B工程公司, C装饰公司"
+                  value={companyNames} onChange={e => setCompanyNames(e.target.value)} />
+              </div>
+              <button className="btn btn-primary" style={{ marginTop: 8 }} onClick={handleUpload} disabled={uploading}>
+                {uploading ? '上传中...' : `上传 ${uploadFiles.length} 个文件`}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Documents tab */}
+      {activeTab === 'docs' && docs.length > 0 && (
+        <div className="card animate-in" style={{ marginBottom: 20 }}>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>投标单位</th><th>文件名</th><th>类型</th><th>大小</th><th>作者</th><th>创建软件</th><th>页数</th><th>状态</th></tr></thead>
+              <thead><tr><th>投标单位</th><th>文件名</th><th>类型</th><th>大小</th><th>作者</th><th>创建软件</th><th>页数</th><th>状态</th><th>操作</th></tr></thead>
               <tbody>
                 {docs.map(d => (
                   <tr key={d.id}>
@@ -924,6 +1108,7 @@ function AnalysisPage({ projectId, onNavigate }) {
                     <td><span className={`badge ${d.parsed === 1 ? 'tag-low' : d.parsed === 2 ? 'tag-critical' : 'tag-medium'}`}>
                       {d.parsed === 1 ? '已解析' : d.parsed === 2 ? '失败' : '待解析'}
                     </span></td>
+                    <td><button className="btn btn-sm" onClick={() => openPreview(d.id)}>👁 预览</button></td>
                   </tr>
                 ))}
               </tbody>
@@ -932,13 +1117,62 @@ function AnalysisPage({ projectId, onNavigate }) {
         </div>
       )}
 
-      {/* Analysis results detail */}
-      {results?.results?.length > 0 && (
-        <div className="card animate-in delay-4">
+      {/* Results tab */}
+      {activeTab === 'results' && results?.results?.length > 0 && (
+        <div className="card animate-in">
           <div className="card-title">检测结果明细 ({results.results.length} 项预警)</div>
           {results.results.sort((a, b) => b.score - a.score).map((r, i) => (
             <AlertItemWithDiff key={r.id || i} result={r} />
           ))}
+        </div>
+      )}
+      {activeTab === 'results' && (!results || results?.results?.length === 0) && (
+        <div className="empty-state"><div className="empty-icon">🔍</div><div className="empty-text">暂无检测结果</div><div className="empty-sub">请先上传文档并执行分析</div></div>
+      )}
+
+      {/* History tab */}
+      {activeTab === 'history' && (
+        <div className="card animate-in">
+          <div className="card-title">分析历史</div>
+          {history.length === 0 ? (
+            <div className="empty-state" style={{padding:30}}><div className="empty-text">暂无分析记录</div></div>
+          ) : history.map(h => (
+            <div className={`history-item ${h.status === 'completed' ? '' : ''}`} key={h.id} onClick={() => h.status === 'completed' && loadHistoryResults(h.id)}>
+              <div className="history-dot" style={{background: h.status==='completed'?'var(--low)':h.status==='running'?'var(--accent)':'var(--critical)'}} />
+              <div style={{flex:1}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <span style={{fontWeight:500,fontSize:14}}>v{h.version} — {h.status === 'completed' ? '✅ 完成' : h.status === 'running' ? '🔄 运行中' : '❌ 失败'}</span>
+                  <span style={{fontSize:12,color:'var(--text-muted)'}}>{h.started_at ? new Date(h.started_at).toLocaleString('zh-CN') : ''}</span>
+                </div>
+                <div style={{fontSize:12,color:'var(--text-muted)',marginTop:4}}>
+                  文档 {h.document_count} 份 · 预警 {h.total_alerts} 项 · 风险评分 <span style={{fontWeight:700,color:RISK_COLORS[h.risk_level]||'var(--text)'}}>{h.risk_score?.toFixed(1)||'0.0'}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Document preview modal */}
+      {previewDoc && (
+        <div className="modal-overlay" onClick={() => setPreviewDoc(null)}>
+          <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div className="modal-title" style={{marginBottom:0}}>📄 {previewDoc.file_name}</div>
+              <button className="btn btn-sm" onClick={() => setPreviewDoc(null)}>✕</button>
+            </div>
+            {previewDoc.company_name && <div style={{fontSize:13,color:'var(--text-muted)',marginBottom:12}}>投标单位: {previewDoc.company_name}</div>}
+            <div className="meta-grid">
+              {Object.entries(previewDoc.metadata || {}).filter(([,v])=>v && v !== '0' && (!Array.isArray(v) || v.length > 0)).map(([k,v])=>(
+                <div className="meta-item" key={k}>
+                  <div className="meta-key">{k}</div>
+                  <div className="meta-val">{Array.isArray(v) ? v.join(', ') : String(v)}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{fontWeight:500,fontSize:13,marginBottom:8}}>文档内容预览 (共 {previewDoc.text_length} 字符)</div>
+            <div className="preview-text">{previewDoc.text_preview || '(无文本内容)'}</div>
+          </div>
         </div>
       )}
     </div>
@@ -1012,6 +1246,78 @@ function AlertsPage({ onNavigate }) {
               )}
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// === Audit Log Page ===
+function AuditLogPage() {
+  const [logs, setLogs] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [filterAction, setFilterAction] = useState('');
+  const [page, setPage] = useState(0);
+  const limit = 30;
+
+  const load = useCallback(() => {
+    setLoading(true);
+    let q = `/audit/?skip=${page * limit}&limit=${limit}`;
+    if (filterAction) q += `&action=${filterAction}`;
+    api(q).then(d => { setLogs(d.items || []); setTotal(d.total || 0); }).catch(e => {
+      console.error(e); setLogs([]);
+    }).finally(() => setLoading(false));
+  }, [page, filterAction]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const ACTION_NAMES = {
+    login: '登录', register: '注册', upload: '上传文档', create_project: '创建项目',
+    delete_project: '删除项目', batch_delete: '批量删除', analysis_start: '开始分析',
+    analysis_complete: '分析完成', export_excel: '导出Excel', export_pdf: '导出PDF',
+  };
+
+  return (
+    <div>
+      <div className="page-header">
+        <div className="page-title">操作日志</div>
+        <div className="page-desc">系统操作审计记录 (共 {total} 条)</div>
+      </div>
+      <div className="search-bar">
+        <select className="form-input" value={filterAction} onChange={e => { setFilterAction(e.target.value); setPage(0); }} style={{cursor:'pointer'}}>
+          <option value="">全部操作</option>
+          {Object.entries(ACTION_NAMES).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+        </select>
+      </div>
+      {loading ? <div className="spinner" /> : logs.length === 0 ? (
+        <div className="empty-state"><div className="empty-icon">📋</div><div className="empty-text">暂无日志</div></div>
+      ) : (
+        <div className="card">
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>时间</th><th>用户</th><th>操作</th><th>资源</th><th>详情</th><th>IP</th></tr></thead>
+              <tbody>
+                {logs.map(l => (
+                  <tr key={l.id}>
+                    <td style={{fontSize:12,color:'var(--text-muted)',whiteSpace:'nowrap'}}>{l.created_at ? new Date(l.created_at).toLocaleString('zh-CN') : '-'}</td>
+                    <td style={{fontWeight:500}}>{l.username || '-'}</td>
+                    <td><span className="badge" style={{background:'var(--accent-glow)',color:'var(--accent)'}}>{ACTION_NAMES[l.action]||l.action}</span></td>
+                    <td style={{color:'var(--text-muted)',fontSize:12}}>{l.resource_type || '-'}</td>
+                    <td style={{fontSize:12,color:'var(--text-muted)',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{JSON.stringify(l.details)?.slice(0,60)}</td>
+                    <td style={{fontSize:12,color:'var(--text-dim)',fontFamily:'monospace'}}>{l.ip_address || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {total > limit && (
+            <div style={{display:'flex',justifyContent:'center',gap:10,marginTop:16}}>
+              <button className="btn btn-sm" disabled={page===0} onClick={()=>setPage(p=>p-1)}>← 上一页</button>
+              <span style={{fontSize:12,color:'var(--text-muted)',padding:'6px 12px'}}>第 {page+1} / {Math.ceil(total/limit)} 页</span>
+              <button className="btn btn-sm" disabled={(page+1)*limit>=total} onClick={()=>setPage(p=>p+1)}>下一页 →</button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1110,6 +1416,7 @@ function App() {
       case 'projects': return <ProjectsPage onNavigate={navigate} />;
       case 'analysis': return <AnalysisPage projectId={projectId} onNavigate={navigate} />;
       case 'alerts': return <AlertsPage onNavigate={navigate} />;
+      case 'auditlog': return <AuditLogPage />;
       default: return <DashboardPage onNavigate={navigate} />;
     }
   };
@@ -1135,7 +1442,7 @@ function App() {
             <span>{user?.username || '用户'}</span>
             <span style={{ color: 'var(--accent)', cursor: 'pointer' }} onClick={handleLogout}>退出</span>
           </div>
-          <div style={{ marginTop: 6 }}>v2.2 · Phase 2 · AI 智能检测</div>
+          <div style={{ marginTop: 6 }}>v2.3 · Phase 2 · AI 智能检测</div>
         </div>
       </aside>
 

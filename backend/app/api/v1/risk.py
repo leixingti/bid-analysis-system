@@ -17,7 +17,6 @@ async def get_risk_alerts(
     min_score: float = 0.2,
     db: AsyncSession = Depends(get_db)
 ):
-    """获取项目风险预警列表"""
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
@@ -30,7 +29,6 @@ async def get_risk_alerts(
     )
     results = ar_result.scalars().all()
 
-    alerts = []
     type_names = {
         "content_similarity": "文本内容雷同",
         "metadata_match": "元数据异常关联",
@@ -41,13 +39,13 @@ async def get_risk_alerts(
         "price_analysis": "报价异常规律",
     }
 
+    alerts = []
     for ar in results:
         companies = []
         if ar.company_a:
             companies.append(ar.company_a)
         if ar.company_b:
             companies.append(ar.company_b)
-
         alerts.append(RiskAlert(
             alert_type=ar.analysis_type,
             risk_level=ar.risk_level,
@@ -63,7 +61,6 @@ async def get_risk_alerts(
 
 @router.get("/dashboard")
 async def risk_dashboard(db: AsyncSession = Depends(get_db)):
-    """风险总览看板数据"""
     projects_result = await db.execute(
         select(Project).order_by(Project.risk_score.desc()).limit(50)
     )
@@ -71,12 +68,7 @@ async def risk_dashboard(db: AsyncSession = Depends(get_db)):
 
     dashboard = {
         "total_projects": len(projects),
-        "risk_distribution": {
-            "critical": 0,
-            "high": 0,
-            "medium": 0,
-            "low": 0,
-        },
+        "risk_distribution": {"critical": 0, "high": 0, "medium": 0, "low": 0},
         "top_risk_projects": [],
     }
 
@@ -84,16 +76,11 @@ async def risk_dashboard(db: AsyncSession = Depends(get_db)):
         level = p.risk_level or "low"
         if level in dashboard["risk_distribution"]:
             dashboard["risk_distribution"][level] += 1
-
         if p.risk_score > 0:
             dashboard["top_risk_projects"].append({
-                "id": p.id,
-                "name": p.name,
-                "risk_score": p.risk_score,
-                "risk_level": p.risk_level,
-                "status": p.status,
+                "id": p.id, "name": p.name,
+                "risk_score": p.risk_score, "risk_level": p.risk_level, "status": p.status,
             })
 
     dashboard["top_risk_projects"] = dashboard["top_risk_projects"][:10]
-
     return dashboard

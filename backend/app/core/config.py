@@ -6,7 +6,7 @@ import os
 class Settings(BaseSettings):
     # App
     APP_NAME: str = "招投标串标围标分析系统"
-    APP_VERSION: str = "2.1.0"
+    APP_VERSION: str = "2.3.0"
     DEBUG: bool = False
 
     # Database
@@ -18,15 +18,16 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
     ALGORITHM: str = "HS256"
 
-    # Analysis thresholds
+    # Analysis thresholds (defaults, can be overridden per-project)
     SIMILARITY_THRESHOLD: float = 0.20
     TIMESTAMP_DIFF_MINUTES: int = 5
+    SENTENCE_SIMILARITY_THRESHOLD: float = 0.4
 
     # File storage
     UPLOAD_DIR: str = "./uploads"
     MAX_FILE_SIZE_MB: int = 100
 
-    # S3/R2 object storage (optional, for persistent file storage)
+    # S3/R2 object storage (optional)
     S3_ENDPOINT: str = ""
     S3_ACCESS_KEY: str = ""
     S3_SECRET_KEY: str = ""
