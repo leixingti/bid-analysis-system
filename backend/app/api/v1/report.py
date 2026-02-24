@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.core.security import require_auth, get_client_ip
+from app.core.security import get_current_user, get_client_ip
 from app.models.models import Project, Document, AnalysisResult
 from app.services.report.excel_report import ExcelReportGenerator
 from app.services.report.pdf_report import PDFReportGenerator
@@ -42,13 +42,14 @@ async def _get_report_data(project_id: str, db: AsyncSession):
 async def export_excel(
     project_id: str, request: Request = None,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_auth),
+    current_user=Depends(get_current_user),
 ):
     """导出 Excel 分析报告"""
     project, documents, results = await _get_report_data(project_id, db)
 
     await log_action(db, action="export_excel", resource_type="report", resource_id=project_id,
-                   user_id=current_user.get("sub"), username=current_user.get("username"),
+                   user_id=current_user.get("sub") if current_user else None,
+                   username=current_user.get("username") if current_user else None,
                    ip_address=get_client_ip(request) if request else None)
     await db.commit()
 
@@ -70,13 +71,14 @@ async def export_excel(
 async def export_pdf(
     project_id: str, request: Request = None,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_auth),
+    current_user=Depends(get_current_user),
 ):
     """导出 PDF 分析报告"""
     project, documents, results = await _get_report_data(project_id, db)
 
     await log_action(db, action="export_pdf", resource_type="report", resource_id=project_id,
-                   user_id=current_user.get("sub"), username=current_user.get("username"),
+                   user_id=current_user.get("sub") if current_user else None,
+                   username=current_user.get("username") if current_user else None,
                    ip_address=get_client_ip(request) if request else None)
     await db.commit()
 
