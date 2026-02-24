@@ -29,5 +29,18 @@ async def get_db():
 
 
 async def init_db():
+    """初始化数据库：创建新表 + 迁移已有表"""
+    import logging
+    _logger = logging.getLogger(__name__)
+
+    # 1. 创建所有新表（对已存在的表无影响）
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # 2. 执行增量迁移（给已有表加新列）
+    try:
+        from app.core.migration import run_migration
+        async with engine.connect() as conn:
+            await run_migration(conn)
+    except Exception as e:
+        _logger.warning(f"⚠️ Migration skipped: {e}")
