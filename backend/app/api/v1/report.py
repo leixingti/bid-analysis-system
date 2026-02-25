@@ -17,6 +17,22 @@ from app.services.audit import log_action
 router = APIRouter()
 
 
+def _orm_to_dict(obj):
+    """Convert a SQLAlchemy ORM object to a plain dict"""
+    return {c.name: getattr(obj, c.name) for c in obj.__table__.columns}
+
+
+def _build_risk_summary(results):
+    """Build risk_summary dict with dimension_scores from result ORM objects"""
+    dimension_scores = {}
+    for r in results:
+        atype = r.analysis_type
+        score = r.score or 0.0
+        if atype not in dimension_scores or score > dimension_scores[atype]:
+            dimension_scores[atype] = score
+    return {"dimension_scores": dimension_scores}
+
+
 async def _get_report_data(project_id: str, db: AsyncSession):
     """收集报告所需的全部数据"""
     result = await db.execute(select(Project).where(Project.id == project_id))
@@ -53,9 +69,18 @@ async def export_excel(
                    ip_address=get_client_ip(request) if request else None)
     await db.commit()
 
+    project_dict = _orm_to_dict(project)
+    project_dict["document_count"] = len(documents)
+    documents_list = [_orm_to_dict(d) for d in documents]
+    results_list = [_orm_to_dict(r) for r in results]
+    risk_summary = _build_risk_summary(results)
+
     tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+    tmp.close()
     try:
-        ExcelReportGenerator.generate(project, documents, results, tmp.name)
+        buf = ExcelReportGenerator.generate(project_dict, documents_list, results_list, risk_summary)
+        with open(tmp.name, "wb") as f:
+            f.write(buf.read())
         return FileResponse(
             tmp.name,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -82,9 +107,18 @@ async def export_pdf(
                    ip_address=get_client_ip(request) if request else None)
     await db.commit()
 
+    project_dict = _orm_to_dict(project)
+    project_dict["document_count"] = len(documents)
+    documents_list = [_orm_to_dict(d) for d in documents]
+    results_list = [_orm_to_dict(r) for r in results]
+    risk_summary = _build_risk_summary(results)
+
     tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+    tmp.close()
     try:
-        PDFReportGenerator.generate(project, documents, results, tmp.name)
+        buf = PDFReportGenerator.generate(project_dict, documents_list, results_list, risk_summary)
+        with open(tmp.name, "wb") as f:
+            f.write(buf.read())
         return FileResponse(
             tmp.name,
             media_type="application/pdf",
