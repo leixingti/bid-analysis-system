@@ -119,23 +119,39 @@ class PDFReportGenerator:
         story.append(Spacer(1, 3*mm))
         sorted_results = sorted(results, key=lambda x: x.get("score", 0), reverse=True)
         if sorted_results:
-            res_data = [["序号", "检测类型", "单位A", "单位B", "得分", "风险", "说明"]]
+            res_data = [[
+                Paragraph("序号", styles["cell"]), Paragraph("检测类型", styles["cell"]),
+                Paragraph("单位A", styles["cell"]), Paragraph("单位B", styles["cell"]),
+                Paragraph("得分", styles["cell"]), Paragraph("风险", styles["cell"]),
+                Paragraph("说明", styles["cell"]),
+            ]]
             for idx, r in enumerate(sorted_results[:30], 1):
                 sm = _safe(r.get("summary"))
-                if len(sm) > 35: sm = sm[:35] + "..."
-                ca_short = _safe(r.get("company_a"))
-                if len(ca_short) > 8: ca_short = ca_short[:8] + ".."
-                cb_short = _safe(r.get("company_b"))
-                if len(cb_short) > 8: cb_short = cb_short[:8] + ".."
-                res_data.append([str(idx), TYPE_NAMES.get(r.get("analysis_type",""),""),
-                    ca_short, cb_short,
-                    f"{(r.get('score') or 0):.0%}", RISK_NAMES.get(r.get("risk_level") or "low",""), sm])
-            rt = Table(res_data, colWidths=[0.8*cm, 2.2*cm, 2.2*cm, 2.2*cm, 1.2*cm, 1.2*cm, 6.5*cm])
-            rt.setStyle(TableStyle([("FONTNAME",(0,0),(-1,-1),FONT_NAME),("FONTSIZE",(0,0),(-1,-1),8),
-                ("FONTNAME",(0,0),(-1,0),FONT_NAME_BOLD),("BACKGROUND",(0,0),(-1,0),DARK_BLUE),
-                ("TEXTCOLOR",(0,0),(-1,0),colors.white),("ALIGN",(0,0),(5,-1),"CENTER"),
-                ("GRID",(0,0),(-1,-1),0.5,GRID_COLOR),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
-                ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white, LIGHT_BG])]))
+                ca = _safe(r.get("company_a"))
+                cb = _safe(r.get("company_b"))
+                res_data.append([
+                    Paragraph(str(idx), styles["cell"]),
+                    Paragraph(TYPE_NAMES.get(r.get("analysis_type", ""), ""), styles["cell"]),
+                    Paragraph(ca, styles["cell"]),
+                    Paragraph(cb, styles["cell"]),
+                    Paragraph(f"{(r.get('score') or 0):.0%}", styles["cell"]),
+                    Paragraph(RISK_NAMES.get(r.get("risk_level") or "low", ""), styles["cell"]),
+                    Paragraph(sm, styles["cell"]),
+                ])
+            rt = Table(res_data, colWidths=[0.8*cm, 2*cm, 3.5*cm, 3.5*cm, 1.2*cm, 1.2*cm, 5*cm],
+                       repeatRows=1)
+            rt.setStyle(TableStyle([
+                ("FONTNAME", (0,0), (-1,-1), FONT_NAME), ("FONTSIZE", (0,0), (-1,-1), 8),
+                ("FONTNAME", (0,0), (-1,0), FONT_NAME_BOLD),
+                ("BACKGROUND", (0,0), (-1,0), DARK_BLUE),
+                ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+                ("ALIGN", (0,0), (5,-1), "CENTER"),
+                ("VALIGN", (0,0), (-1,-1), "TOP"),
+                ("GRID", (0,0), (-1,-1), 0.5, GRID_COLOR),
+                ("TOPPADDING", (0,0), (-1,-1), 4), ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+                ("LEFTPADDING", (0,0), (-1,-1), 4), ("RIGHTPADDING", (0,0), (-1,-1), 4),
+                ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, LIGHT_BG]),
+            ]))
             story.append(rt)
         story.append(Spacer(1, 8*mm))
 
@@ -217,13 +233,18 @@ class PDFReportGenerator:
             # Segments
             segs = details.get("similar_segments", [])
             if segs:
-                seg_data = [["#", "相似度", f"{ca or '文档A'}段落", f"{cb or '文档B'}段落"]]
+                ca_h = (ca or "文档A")[:12]
+                cb_h = (cb or "文档B")[:12]
+                seg_data = [[
+                    Paragraph("#", styles["cell"]), Paragraph("相似度", styles["cell"]),
+                    Paragraph(f"{ca_h}段落", styles["cell"]), Paragraph(f"{cb_h}段落", styles["cell"]),
+                ]]
                 for i, s in enumerate(segs[:15], 1):
-                    ta = _safe(s.get("text_a_segment"))[:100]
-                    tb = _safe(s.get("text_b_segment"))[:100]
+                    ta = _safe(s.get("text_a_segment"))[:150]
+                    tb = _safe(s.get("text_b_segment"))[:150]
                     seg_data.append([str(i), f"{s.get('similarity',0):.0%}",
                                      Paragraph(ta, styles["cell"]), Paragraph(tb, styles["cell"])])
-                st2 = Table(seg_data, colWidths=[0.8*cm, 1.5*cm, 7*cm, 7*cm])
+                st2 = Table(seg_data, colWidths=[0.8*cm, 1.5*cm, 7.4*cm, 7.4*cm], repeatRows=1)
                 ss = list(base_style) + [("ALIGN",(0,0),(1,-1),"CENTER")]
                 for i, s in enumerate(segs[:15], 1):
                     if s.get("similarity", 0) >= 0.6:
